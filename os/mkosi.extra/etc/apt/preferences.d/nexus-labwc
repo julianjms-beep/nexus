@@ -1,0 +1,5 @@
+# NEXUS OS ships labwc with its own window animations (labwc_<version>+nexusN, built from os/labwc in the NEXUS
+# repository). Debian's labwc must never replace it, not even a newer one: new labwc versions arrive with NEXUS updates.
+Package: labwc
+Pin: version *+nexus*
+Pin-Priority: 1001

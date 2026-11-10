@@ -1,0 +1,425 @@
+#!/usr/bin/python3 -I
+"""nexus-mail: the mail engine of NEXUS Mail (core/src/mail.ts runs it; the app is apps/Mail.qml).
+
+One operation per run, the standard protocols and nothing else: IMAP over TLS to read, SMTP with TLS to send.
+The request (the account with its app password, and the operation's arguments) arrives as ONE JSON object on
+stdin and the answer leaves as one JSON object on stdout. Nothing is written to disk and the password never
+appears on a command line or in an error.
+
+  nexus-mail check      can we sign in? which folders are Sent and Trash?
+  nexus-mail list       {folder, limit}                the newest messages' headers
+  nexus-mail read       {folder, uid}                  one message as plain text (+ attachment names); marks it read
+  nexus-mail flag       {folder, uid, seen}
+  nexus-mail delete     {folder, uid, trash}           moves it to the Trash folder
+  nexus-mail send       {to, cc, subject, body, inReplyTo, references, sent}
+  nexus-mail followups  {sent, days}                   what you sent more than N days ago and nobody answered
+
+Messages are shown as text: HTML is reduced to its words, so remote images (the trackers of newsletters) are
+never fetched.
+"""
+import email
+import email.policy
+import email.utils
+import html.parser
+import imaplib
+import json
+import re
+import smtplib
+import socket
+import ssl
+import sys
+import time
+from datetime import datetime, timedelta, timezone
+from email.header import decode_header, make_header
+from email.message import EmailMessage
+
+TIMEOUT = 25
+MAX_BODY = 3_000_000
+HEADERS = "FROM TO CC SUBJECT DATE MESSAGE-ID IN-REPLY-TO REFERENCES"
+
+
+class Fail(Exception):
+    def __init__(self, code, detail=""):
+        super().__init__(code)
+        self.code, self.detail = code, detail
+
+
+def text_of(value) -> str:
+    """A header as readable text ("=?utf-8?q?Hola?=" -> "Hola")."""
+    if value is None:
+        return ""
+    try:
+        return re.sub(r"\s+", " ", str(make_header(decode_header(str(value))))).strip()
+    except Exception:
+        return re.sub(r"\s+", " ", str(value)).strip()
+
+
+def person(value) -> dict:
+    name, addr = email.utils.parseaddr(text_of(value))
+    return {"name": name or addr.split("@")[0], "email": addr.lower()}
+
+
+def people(value) -> list:
+    return [{"name": n or a.split("@")[0], "email": a.lower()} for n, a in email.utils.getaddresses([text_of(value)]) if a][:30]
+
+
+def iso_date(value) -> str:
+    try:
+        d = email.utils.parsedate_to_datetime(str(value))
+        if d.tzinfo is None:
+            d = d.replace(tzinfo=timezone.utc)
+        return d.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
+    except Exception:
+        return ""
+
+
+class _Words(html.parser.HTMLParser):
+    """HTML reduced to its text: block tags become line breaks, scripts and styles disappear, links keep their text."""
+    BLOCK = {"p", "div", "br", "tr", "li", "h1", "h2", "h3", "h4", "table", "blockquote", "hr", "section", "article"}
+
+    def __init__(self):
+        super().__init__(convert_charrefs=True)
+        self.out, self.skip = [], 0
+
+    def handle_starttag(self, tag, attrs):
+        if tag in ("script", "style", "head", "title"):
+            self.skip += 1
+        elif tag in self.BLOCK:
+            self.out.append("\n")
+
+    def handle_endtag(self, tag):
+        if tag in ("script", "style", "head", "title"):
+            self.skip = max(0, self.skip - 1)
+        elif tag in ("p", "div", "tr", "li", "h1", "h2", "h3", "h4", "table", "blockquote"):
+            self.out.append("\n")
+
+    def handle_data(self, data):
+        if not self.skip:
+            self.out.append(data)
+
+
+def html_to_text(src: str) -> str:
+    p = _Words()
+    try:
+        p.feed(src)
+        p.close()
+    except Exception:
+        pass
+    t = "".join(p.out).replace("\xa0", " ").replace("‌", "").replace("​", "")
+    t = re.sub(r"[ \t\r\f\v]+", " ", t)
+    t = re.sub(r" *\n *", "\n", t)
+    return re.sub(r"\n{3,}", "\n\n", t).strip()
+
+
+def body_of(msg) -> tuple:
+    """(text, attachments) of a parsed message. Plain text when there is some, else the HTML's words."""
+    plain, rich, files = None, None, []
+    for part in msg.walk():
+        if part.is_multipart():
+            continue
+        name = part.get_filename()
+        disp = str(part.get("Content-Disposition") or "").lower()
+        ctype = part.get_content_type()
+        if name or disp.startswith("attachment"):
+            payload = part.get_payload(decode=True) or b""
+            files.append({"name": text_of(name) or "adjunto", "size": len(payload), "type": ctype})
+            continue
+        if ctype not in ("text/plain", "text/html"):
+            continue
+        try:
+            content = part.get_content()
+        except Exception:
+            raw = part.get_payload(decode=True) or b""
+            content = raw.decode(part.get_content_charset() or "utf-8", "replace")
+        if ctype == "text/plain" and plain is None:
+            plain = str(content)
+        elif ctype == "text/html" and rich is None:
+            rich = str(content)
+    text = plain.strip() if plain and plain.strip() else html_to_text(rich or "")
+    return text[:200_000], files[:40]
+
+
+def header_item(uid: str, flags: str, raw: bytes, size: int) -> dict:
+    h = email.message_from_bytes(raw, policy=email.policy.compat32)
+    return {
+        "uid": uid, "seen": "\\Seen" in flags, "flagged": "\\Flagged" in flags, "answered": "\\Answered" in flags, "size": size,
+        "from": person(h.get("From")), "to": people(h.get("To")), "subject": text_of(h.get("Subject")) or "(sin asunto)",
+        "date": iso_date(h.get("Date")), "id": text_of(h.get("Message-ID")), "inReplyTo": text_of(h.get("In-Reply-To")),
+        "references": text_of(h.get("References")),
+    }
+
+
+def parse_fetch(data) -> list:
+    """imaplib's FETCH answer -> [(uid, flags, size, header bytes)]."""
+    out = []
+    for item in data or []:
+        if not isinstance(item, tuple) or len(item) < 2:
+            continue
+        meta = item[0].decode("utf-8", "replace")
+        uid = re.search(r"UID (\d+)", meta)
+        if not uid:
+            continue
+        flags = re.search(r"FLAGS \(([^)]*)\)", meta)
+        size = re.search(r"RFC822\.SIZE (\d+)", meta)
+        out.append((uid.group(1), flags.group(1) if flags else "", int(size.group(1)) if size else 0, item[1] or b""))
+    return out
+
+
+def special_folders(listing) -> dict:
+    """Which folders are Sent and Trash, from the server's LIST (special-use flags first, common names after)."""
+    found = {"inbox": "INBOX", "sent": "", "trash": ""}
+    names = []
+    for line in listing or []:
+        if not line:
+            continue
+        s = line.decode("utf-8", "replace") if isinstance(line, bytes) else str(line)
+        m = re.match(r'\((?P<flags>[^)]*)\) (?:"(?P<sep>[^"]*)"|NIL) (?P<name>.+)$', s)
+        if not m:
+            continue
+        name = m.group("name").strip()
+        if name.startswith('"') and name.endswith('"'):
+            name = name[1:-1].replace('\\"', '"').replace("\\\\", "\\")
+        flags = m.group("flags")
+        names.append(name)
+        if "\\Sent" in flags and not found["sent"]:
+            found["sent"] = name
+        if "\\Trash" in flags and not found["trash"]:
+            found["trash"] = name
+    low = {n.lower(): n for n in names}
+    for key, guesses in (("sent", ("sent messages", "sent", "enviados", "[gmail]/enviados", "[gmail]/sent mail", "sent items")),
+                         ("trash", ("deleted messages", "trash", "papelera", "[gmail]/papelera", "[gmail]/trash", "deleted items"))):
+        if not found[key]:
+            for g in guesses:
+                if g in low:
+                    found[key] = low[g]
+                    break
+    return found
+
+
+def quote(name: str) -> str:
+    return '"' + str(name).replace("\\", "\\\\").replace('"', '\\"') + '"'
+
+
+def connect(acc):
+    host, port = str(acc.get("imapHost", "")), int(acc.get("imapPort", 993))
+    if not re.fullmatch(r"[A-Za-z0-9.-]{3,200}", host):
+        raise Fail("bad_account")
+    try:
+        m = imaplib.IMAP4_SSL(host, port, ssl_context=ssl.create_default_context(), timeout=TIMEOUT)
+    except (socket.gaierror, socket.timeout, ConnectionError, OSError, ssl.SSLError) as e:
+        raise Fail("offline", type(e).__name__)
+    try:
+        m.login(str(acc.get("user") or acc.get("email") or ""), str(acc.get("password") or ""))
+    except imaplib.IMAP4.error:
+        try:
+            m.logout()
+        except Exception:
+            pass
+        raise Fail("auth")
+    return m
+
+
+def select(m, folder, readonly=True):
+    typ, _ = m.select(quote(folder or "INBOX"), readonly=readonly)
+    if typ != "OK":
+        raise Fail("no_folder")
+
+
+def op_check(req, m):
+    typ, listing = m.list()
+    return {"folders": special_folders(listing if typ == "OK" else [])}
+
+
+def fetch_headers(m, uids) -> list:
+    if not uids:
+        return []
+    typ, data = m.uid("FETCH", ",".join(uids), f"(UID FLAGS RFC822.SIZE BODY.PEEK[HEADER.FIELDS ({HEADERS})])")
+    if typ != "OK":
+        raise Fail("failed")
+    items = [header_item(u, f, raw, size) for u, f, size, raw in parse_fetch(data)]
+    items.sort(key=lambda x: int(x["uid"]), reverse=True)
+    return items
+
+
+def op_list(req, m):
+    select(m, req.get("folder"))
+    typ, data = m.uid("SEARCH", None, "ALL")
+    if typ != "OK":
+        raise Fail("failed")
+    uids = (data[0] or b"").split()
+    limit = max(1, min(100, int(req.get("limit") or 40)))
+    return {"total": len(uids), "messages": fetch_headers(m, [u.decode() for u in uids[-limit:]])}
+
+
+def uid_of(req) -> str:
+    uid = str(req.get("uid") or "")
+    if not uid.isdigit():
+        raise Fail("bad_request")
+    return uid
+
+
+def op_read(req, m):
+    uid = uid_of(req)
+    select(m, req.get("folder"), readonly=False)
+    typ, data = m.uid("FETCH", uid, "(UID FLAGS RFC822.SIZE BODY.PEEK[]<0.%d>)" % MAX_BODY)
+    got = parse_fetch(data) if typ == "OK" else []
+    if not got:
+        raise Fail("not_found")
+    _, flags, size, raw = got[0]
+    msg = email.message_from_bytes(raw, policy=email.policy.default)
+    text, files = body_of(msg)
+    item = header_item(uid, flags, raw, size)
+    item.update({"text": text, "attachments": files, "cc": people(msg.get("Cc")), "truncated": size > MAX_BODY})
+    m.uid("STORE", uid, "+FLAGS", "(\\Seen)")
+    item["seen"] = True
+    return {"message": item}
+
+
+def op_flag(req, m):
+    uid = uid_of(req)
+    select(m, req.get("folder"), readonly=False)
+    m.uid("STORE", uid, "+FLAGS" if req.get("seen") else "-FLAGS", "(\\Seen)")
+    return {}
+
+
+def op_delete(req, m):
+    uid = uid_of(req)
+    folder, trash = req.get("folder") or "INBOX", str(req.get("trash") or "")
+    select(m, folder, readonly=False)
+    if trash and trash != folder:
+        typ, _ = m.uid("COPY", uid, quote(trash))
+        if typ != "OK":
+            raise Fail("failed", "copy")
+    m.uid("STORE", uid, "+FLAGS", "(\\Deleted)")
+    m.expunge()
+    return {}
+
+
+def addresses(value) -> list:
+    out = []
+    for a in (value if isinstance(value, list) else str(value or "").replace(";", ",").split(",")):
+        a = str(a).strip()
+        if not a:
+            continue
+        _, addr = email.utils.parseaddr(a)
+        if not re.fullmatch(r"[^@\s<>\"',;]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}", addr):
+            raise Fail("bad_address", addr[:80] or a[:80])
+        out.append(addr)
+    return out[:50]
+
+
+def op_send(req, acc):
+    to, cc = addresses(req.get("to")), addresses(req.get("cc"))
+    if not to:
+        raise Fail("bad_address", "")
+    sender = str(acc.get("email") or "")
+    msg = EmailMessage()
+    msg["From"] = email.utils.formataddr((str(acc.get("name") or ""), sender))
+    msg["To"] = ", ".join(to)
+    if cc:
+        msg["Cc"] = ", ".join(cc)
+    msg["Subject"] = re.sub(r"[\r\n]+", " ", str(req.get("subject") or ""))[:300]
+    msg["Date"] = email.utils.formatdate(localtime=True)
+    msg["Message-ID"] = email.utils.make_msgid(domain=sender.split("@")[-1] or "nexus.local")
+    for key, field in (("inReplyTo", "In-Reply-To"), ("references", "References")):
+        v = re.sub(r"[\r\n]+", " ", str(req.get(key) or "")).strip()
+        if v:
+            msg[field] = v[:900]
+    msg.set_content(str(req.get("body") or "")[:500_000])
+    host, port = str(acc.get("smtpHost", "")), int(acc.get("smtpPort", 587))
+    if not re.fullmatch(r"[A-Za-z0-9.-]{3,200}", host):
+        raise Fail("bad_account")
+    ctx = ssl.create_default_context()
+    try:
+        s = smtplib.SMTP_SSL(host, port, context=ctx, timeout=TIMEOUT) if port == 465 else smtplib.SMTP(host, port, timeout=TIMEOUT)
+        with s:
+            if port != 465:
+                s.starttls(context=ctx)   # never send the password or the mail in the clear
+            s.login(str(acc.get("user") or sender), str(acc.get("password") or ""))
+            s.send_message(msg, from_addr=sender, to_addrs=to + cc)
+    except smtplib.SMTPAuthenticationError:
+        raise Fail("auth")
+    except smtplib.SMTPRecipientsRefused:
+        raise Fail("bad_address", "")
+    except (smtplib.SMTPException, socket.gaierror, socket.timeout, ConnectionError, OSError, ssl.SSLError) as e:
+        raise Fail("offline", type(e).__name__)
+    # keep a copy in Sent (Gmail does it by itself)
+    saved = "gmail" in host or "googlemail" in host
+    sent = str(req.get("sent") or "")
+    if sent and not saved:
+        try:
+            m = connect(acc)
+            try:
+                typ, _ = m.append(quote(sent), "(\\Seen)", imaplib.Time2Internaldate(time.time()), msg.as_bytes())
+                saved = typ == "OK"
+            finally:
+                m.logout()
+        except Exception:
+            saved = False
+    return {"id": str(msg["Message-ID"]), "saved": saved}
+
+
+def op_followups(req, m):
+    """Messages you sent between 30 and N days ago that nobody answered (no reply to them, no later mail from that person)."""
+    days = max(1, min(30, int(req.get("days") or 7)))
+    sent = str(req.get("sent") or "")
+    if not sent:
+        return {"items": []}
+    now = datetime.now(timezone.utc)
+    since = (now - timedelta(days=30)).strftime("%d-%b-%Y")
+    before = (now - timedelta(days=days)).strftime("%d-%b-%Y")
+    select(m, sent)
+    typ, data = m.uid("SEARCH", None, "SINCE", since, "BEFORE", before)
+    mine = fetch_headers(m, [u.decode() for u in (data[0] or b"").split()[-60:]]) if typ == "OK" else []
+    select(m, "INBOX")
+    typ, data = m.uid("SEARCH", None, "SINCE", since)
+    inbox = fetch_headers(m, [u.decode() for u in (data[0] or b"").split()[-300:]]) if typ == "OK" else []
+    answered = set()
+    for it in inbox:
+        answered.update(re.findall(r"<[^>]+>", it["inReplyTo"] + " " + it["references"]))
+    out = []
+    for it in mine:
+        if not it["id"] or it["id"] in answered or not it["to"]:
+            continue
+        who = {p["email"] for p in it["to"]}
+        if any(i["from"]["email"] in who and i["date"] > it["date"] for i in inbox):
+            continue   # they wrote after it, even if not as a reply
+        if it["subject"].lower().startswith(("re:", "rv:", "fwd:", "fw:")) and len(who) > 3:
+            continue
+        out.append({"uid": it["uid"], "to": it["to"][:3], "subject": it["subject"], "date": it["date"]})
+    return {"items": out[:15], "days": days}
+
+
+def main() -> int:
+    op = sys.argv[1] if len(sys.argv) > 1 else ""
+    try:
+        req = json.loads(sys.stdin.read(2_000_000) or "{}")
+        acc = req.get("account") or {}
+        if op == "send":
+            res = op_send(req, acc)
+        elif op in ("check", "list", "read", "flag", "delete", "followups"):
+            m = connect(acc)
+            try:
+                res = {"check": op_check, "list": op_list, "read": op_read, "flag": op_flag, "delete": op_delete, "followups": op_followups}[op](req, m)
+            finally:
+                try:
+                    m.logout()
+                except Exception:
+                    pass
+        else:
+            raise Fail("bad_request")
+        sys.stdout.write(json.dumps({"ok": True, **res}))
+        return 0
+    except Fail as e:
+        sys.stdout.write(json.dumps({"ok": False, "error": e.code, "detail": e.detail}))
+        return 1
+    except (imaplib.IMAP4.abort, imaplib.IMAP4.error, socket.timeout, ConnectionError, OSError, ssl.SSLError) as e:
+        sys.stdout.write(json.dumps({"ok": False, "error": "offline", "detail": type(e).__name__}))
+        return 1
+    except Exception as e:   # never a traceback with the request (and its password) in it
+        sys.stdout.write(json.dumps({"ok": False, "error": "failed", "detail": type(e).__name__}))
+        return 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())

@@ -1,0 +1,26 @@
+node_modules/
+dist/
+.nexus/
+*.log
+.env
+.playwright-mcp/
+
+# --- secretos (añadido 08-11-2026) ---
+.env
+.env.*
+!.env.example
+!.env.sample
+*.pem
+*.key
+*.p8
+*.p12
+credentials.json
+service-account*.json
+
+.DS_Store
+
+# private: the project's own log and old screenshots stay on the owner's computer
+NEXUS-RESUME.md
+docs/capturas/2026-11-09/
+__pycache__/
+*.pyc

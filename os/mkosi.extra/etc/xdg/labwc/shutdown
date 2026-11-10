@@ -1,0 +1,1 @@
+systemctl --user stop nexus-session.target nexus-shell.service nexus-sessiond.service

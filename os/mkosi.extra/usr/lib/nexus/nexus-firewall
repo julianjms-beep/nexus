@@ -1,0 +1,47 @@
+#!/bin/sh
+# NEXUS firewall (nexus-firewall.service, before the network comes up): nothing comes in unless the person opened it.
+#   * answers to what this computer started, and everything inside the computer itself (loopback), always pass;
+#   * the little the network needs to work passes: DHCP answers, ping (a few per second), IPv6 neighbour discovery;
+#   * remote access (SSH, port 22) passes only while it is turned on (Ajustes → Privacidad y seguridad: nexus-guardd
+#     enables ssh.service and runs this again);
+#   * everything else that tries to come in is dropped without an answer.
+# Going out is never filtered. The rules load in one transaction: a reload never leaves a moment without firewall.
+# /etc/nexus/firewall.d/*.rules: extra lines for the input chain (root only; a laboratory's hotspot, for example).
+# If they do not load, the firewall comes up without them rather than not at all.
+set -u
+[ "${1:-start}" = stop ] && { nft delete table inet nexus 2>/dev/null; exit 0; }
+
+open=
+for u in multi-user.target.wants/ssh.service multi-user.target.wants/sshd.service sockets.target.wants/ssh.socket; do
+  [ -e "/etc/systemd/system/$u" ] && open=22
+done
+
+rules() {   # $1 = yes: with the extra rules
+  cat <<'EOF'
+table inet nexus
+delete table inet nexus
+table inet nexus {
+  chain input {
+    type filter hook input priority filter; policy drop;
+    ct state established,related accept
+    iif "lo" accept
+    ct state invalid drop
+    ip protocol icmp icmp type { destination-unreachable, time-exceeded, parameter-problem } accept
+    ip protocol icmp icmp type echo-request limit rate 5/second accept
+    meta l4proto ipv6-icmp icmpv6 type { destination-unreachable, packet-too-big, time-exceeded, parameter-problem, nd-router-advert, nd-neighbor-solicit, nd-neighbor-advert, mld-listener-query } accept
+    meta l4proto ipv6-icmp icmpv6 type echo-request limit rate 5/second accept
+    udp sport 67 udp dport 68 accept
+    ip6 saddr fe80::/10 udp sport 547 udp dport 546 accept
+EOF
+  [ -n "$open" ] && printf '    tcp dport %s accept\n' "$open"
+  if [ "$1" = yes ]; then
+    for f in /etc/nexus/firewall.d/*.rules; do
+      [ -r "$f" ] && sed -e 's/#.*$//' -e '/^[[:space:]]*$/d' -e 's/^/    /' "$f"
+    done
+  fi
+  printf '  }\n}\n'
+}
+
+if rules yes | nft -f - 2>/dev/null; then exit 0; fi
+echo "nexus-firewall: the extra rules in /etc/nexus/firewall.d did not load; starting without them" >&2
+rules no | nft -f -

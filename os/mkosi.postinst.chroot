@@ -1,0 +1,84 @@
+#!/bin/sh
+# Runs inside the image after packages and mkosi.extra are installed.
+set -eu
+# locales
+sed -i 's/^# *\(es_ES.UTF-8 UTF-8\)/\1/; s/^# *\(en_US.UTF-8 UTF-8\)/\1/' /etc/locale.gen
+locale-gen >/dev/null
+# system identities (nexus-shell group, nexus-engine service user)
+systemd-sysusers
+# NEXUS prompt for every new user's bash ( ◆ ~/carpeta ❯ ), appended once to the template
+if ! grep -q "NEXUS prompt" /etc/skel/.bashrc; then
+  cat >> /etc/skel/.bashrc <<'EOF'
+
+# NEXUS prompt
+case ":$PATH:" in *":$HOME/.local/bin:"*) ;; *) PATH="$HOME/.local/bin:$PATH" ;; esac   # npm i -g, pip install --user
+if [ -n "$PS1" ]; then
+  [ -f /usr/lib/git-core/git-sh-prompt ] && . /usr/lib/git-core/git-sh-prompt
+  GIT_PS1_SHOWDIRTYSTATE=1
+  __nexus_git() { type __git_ps1 >/dev/null 2>&1 && __git_ps1 ' \001\033[38;2;61;220;151m\002%s\001\033[0m\002'; }
+  PS1='\[\e[38;2;124;108;255m\]◆\[\e[0m\] \[\e[38;2;200;204;220m\]\w\[\e[0m\]$(__nexus_git) \[\e[38;2;124;108;255m\]❯\[\e[0m\] '
+fi
+EOF
+fi
+# the person using this computer (full name shows on the lock screen). DEV IMAGE: password "nexus" (needed to unlock the screen); release images ask at first boot.
+if ! id nexus >/dev/null 2>&1; then
+  useradd -m -u 1000 -s /bin/bash -c "Carlos" -G sudo,video,render,input,audio,nexus-shell,nexus-update nexus
+fi
+# Ajustes → Actualizaciones talks to nexus-updated through a socket only the group nexus-update may open
+usermod -aG nexus-update nexus
+# Wi-Fi, Bluetooth and the power mode from the menu bar (polkit rule 50-nexus-devices, bluez's D-Bus policy)
+for g in netdev bluetooth; do getent group "$g" >/dev/null || groupadd -r "$g"; usermod -aG "$g" nexus; done
+# (building an x86-64 image on the arm64 builder, PAM cannot change passwords under Rosetta: give the hash directly)
+echo 'nexus:nexus' | chpasswd 2>/dev/null || echo "nexus:$(openssl passwd -6 nexus)" | chpasswd -e
+install -d -m 0700 -o nexus -g nexus /home/nexus/Documentos /home/nexus/Descargas /home/nexus/Imágenes /home/nexus/Notas \
+  /home/nexus/Música /home/nexus/Vídeos
+# which folder is Imágenes, Descargas… for every app (skel only reaches accounts created after it was in place)
+install -d -m 0755 -o nexus -g nexus /home/nexus/.config
+[ -e /home/nexus/.config/user-dirs.dirs ] || install -m 0644 -o nexus -g nexus /etc/skel/.config/user-dirs.dirs /home/nexus/.config/user-dirs.dirs
+cat > /home/nexus/Notas/Bienvenida.txt <<'TXT'
+Bienvenido a NEXUS OS.
+
+Pulsa Super + Espacio (o Alt + Espacio) para hablar con NEXUS AI.
+Prueba: "abre la terminal", "¿cuánta memoria tengo?", "pon el modo claro".
+Para preguntas abiertas, pon tu clave de Claude en Ajustes → NEXUS AI.
+
+Para programar:
+- En la terminal, «ai» pregunta a NEXUS AI: ai ¿cómo deshago el último commit?
+  y con una tubería le pasas la salida de un programa: npm test 2>&1 | ai por qué falla
+- Automatizaciones (en el dock): «cuando cambie ~/proyectos/web, ejecuta npm test», «cada día a las 9, git pull»…
+  Los comandos se ejecutan aislados: solo pueden escribir en su carpeta.
+- Agentes (en el dock): agentes de IA como Claude Code trabajando aislados en un proyecto. Créalo en la app y
+  arráncalo con: nexus-agente web -- claude. Solo ve su carpeta (sin tus claves); lo crítico (git push, rm -r,
+  DROP TABLE, desplegar) te espera en la app, cada commit lo revisa un comité de tres IA y, si rompe los tests,
+  NEXUS se lo dice al momento. NEXUS habla MCP: cualquier agente compatible puede usarlo.
+- El Navegador enseña en la pestaña nueva los servidores que tienes en marcha (localhost) y tiene herramientas
+  de desarrollo (F12) y NEXUS AI para preguntar sobre la página.
+- Vienen git, node/npm, python3 (venv, pip), gcc/make, ripgrep, jq y tmux.
+TXT
+chown nexus:nexus /home/nexus/Notas/Bienvenida.txt
+# NEXUS's own packages (labwc with the window animations): mkosi's local repository is not always offered to apt
+# (it keeps it in its cache and only re-indexes it when that folder changes), so install them here from the copy the
+# image keeps for NEXUS Update. /etc/apt/preferences.d/nexus-labwc then keeps Debian's from replacing it.
+for deb in /var/lib/nexus-update/debs/*+nexus*.deb; do
+  [ -e "$deb" ] || continue
+  pkg=$(dpkg-deb -f "$deb" Package); want=$(dpkg-deb -f "$deb" Version)
+  [ "$(dpkg-query -W -f='${Version}' "$pkg" 2>/dev/null)" = "$want" ] || DEBIAN_FRONTEND=noninteractive dpkg -i "$deb"
+done
+# services
+systemctl enable nexus-firewall.service nexus-guardd.service
+systemctl enable greetd.service nexus-engined.service nexus-updated.service nexus-boot-display.service systemd-networkd.service systemd-resolved.service systemd-timesyncd.service ssh.service
+systemctl enable NetworkManager.service bluetooth.service power-profiles-daemon.service
+systemctl set-default graphical.target
+systemctl mask systemd-firstboot.service
+ln -sf ../run/systemd/resolve/stub-resolv.conf /etc/resolv.conf
+# about this OS (mkosi passes the image's version; NEXUS Update rewrites these version lines on each update)
+v=${IMAGE_VERSION:-0.0.0}
+cat > /etc/os-release <<REL
+PRETTY_NAME="NEXUS OS $v (dev)"
+NAME="NEXUS OS"
+VERSION_ID="$v"
+VERSION="$v (dev)"
+ID=nexus
+ID_LIKE=debian
+VARIANT="Developer preview"
+REL

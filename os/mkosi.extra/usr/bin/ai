@@ -1,0 +1,94 @@
+#!/usr/bin/python3 -I
+"""ai: NEXUS AI desde la terminal.
+
+  ai ¿cómo deshago el último commit sin perder los cambios?
+  npm test 2>&1 | ai por qué falla
+  git diff | ai revisa estos cambios
+  journalctl -u nginx -n 80 | ai
+
+Lo que llega por la tubería viaja como salida de programas (no como órdenes tuyas) y NEXUS AI no puede
+ejecutar nada mientras la lee: solo explica y propone comandos para que tú decidas.
+"""
+import itertools
+import json
+import os
+import sys
+import threading
+import time
+import urllib.error
+import urllib.request
+
+SESSION = "http://127.0.0.1:7779/ai"
+MAX_IN = 24_000          # the Engine keeps the last 24 000 characters (where errors usually are)
+
+
+def token() -> str:
+    run = os.environ.get("XDG_RUNTIME_DIR") or f"/run/user/{os.getuid()}"
+    try:
+        with open(os.path.join(run, "nexus", "session.token"), encoding="utf-8") as f:
+            return f.read().strip()
+    except OSError:
+        sys.exit("ai: no encuentro la sesión de NEXUS (¿estás dentro del escritorio?)")
+
+
+def spinner(stop: threading.Event) -> None:
+    for c in itertools.cycle("⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"):
+        if stop.wait(0.08):
+            break
+        sys.stderr.write(f"\r\033[38;5;141m{c}\033[0m NEXUS AI está pensando…")
+        sys.stderr.flush()
+    sys.stderr.write("\r\033[K")
+    sys.stderr.flush()
+
+
+def main() -> int:
+    args = sys.argv[1:]
+    if args and args[0] in ("-h", "--help"):
+        print(__doc__.strip())
+        return 0
+    question = " ".join(args).strip()
+    piped = ""
+    if not sys.stdin.isatty():
+        data = sys.stdin.buffer.read()
+        piped = data.decode("utf-8", "replace")[-MAX_IN * 2:]
+    if not question and not piped.strip():
+        print(__doc__.strip())
+        return 2
+    if not question:
+        question = "¿Qué pasa aquí? Explica la causa y cómo arreglarlo."
+    body = {"text": question[:4000], "via": "terminal"}
+    if piped.strip():
+        body["output"] = {"text": piped[-MAX_IN:]}
+    req = urllib.request.Request(SESSION, data=json.dumps(body).encode(), method="POST",
+                                 headers={"Authorization": f"Bearer {token()}", "Content-Type": "application/json"})
+    stop = threading.Event()
+    spin = threading.Thread(target=spinner, args=(stop,), daemon=True) if sys.stderr.isatty() else None
+    if spin:
+        spin.start()
+    t0 = time.monotonic()
+    try:
+        with urllib.request.urlopen(req, timeout=180) as r:
+            reply = json.load(r)
+    except urllib.error.HTTPError as e:
+        reply = {"text": "El motor de NEXUS no responde ahora mismo." if e.code == 503 else f"No he podido responder (error {e.code}).", "error": True}
+    except (urllib.error.URLError, TimeoutError, OSError):
+        reply = {"text": "No llego al servicio de la sesión de NEXUS.", "error": True}
+    finally:
+        stop.set()
+        if spin:
+            spin.join()
+    text = str(reply.get("text") or "").strip()
+    tty = sys.stdout.isatty()
+    if tty:
+        took = time.monotonic() - t0
+        who = "Claude" if reply.get("source") == "claude" else "local" if reply.get("source") == "local" else ""
+        print(f"\033[1;38;5;141m◆ NEXUS AI\033[0m\033[38;5;245m{(' · ' + who) if who else ''} · {took:.1f} s\033[0m")
+    print(text)
+    return 1 if reply.get("error") else 0
+
+
+if __name__ == "__main__":
+    try:
+        sys.exit(main())
+    except KeyboardInterrupt:
+        sys.exit(130)

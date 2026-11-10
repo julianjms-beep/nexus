@@ -1,0 +1,282 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- NEXUS lock screen (gtklock layout). nexus-lock fills the NAME, INITIAL, GREETING and MONITOR placeholders
+     (XML-escaped) and drops a card when its text is empty. The network / battery / power bar (bottom right) and the
+     capital letter of the date come from the gtklock module nexus-lockbar (os/lock-module).
+     Every id that gtklock looks up is kept: window-box, info-box, time-box, clock-label, date-label, body-revealer, body-grid,
+     input-label, input-field, message-*, warning/error-label, unlock-button.
+     The column sits in a scrolled window without a scrollbar: the lock surface must be exactly the size the compositor
+     asks for (a taller window is a protocol error that kills gtklock and leaves a black, locked screen), so on a short
+     screen the column is clipped instead of growing the window. nexus-lock adds compact.css below 780 points. -->
+<interface>
+  <object class="GtkBox" id="window-box">
+    <property name="name">window-box</property>
+    <property name="orientation">vertical</property>
+    <property name="hexpand">1</property>
+    <property name="vexpand">1</property>
+    <child>
+      <object class="GtkOverlay" id="nexus-overlay">
+        <property name="hexpand">1</property>
+        <property name="vexpand">1</property>
+        <child>
+          <object class="GtkScrolledWindow" id="nexus-scroll">
+            <property name="hscrollbar-policy">never</property>
+            <property name="vscrollbar-policy">external</property>
+            <property name="hexpand">1</property>
+            <property name="vexpand">1</property>
+            <child>
+              <object class="GtkViewport" id="nexus-viewport">
+                <property name="shadow-type">none</property>
+                <child>
+      <object class="GtkBox" id="nexus-center">
+        <property name="name">nexus-center</property>
+        <property name="orientation">vertical</property>
+        <property name="halign">center</property>
+        <property name="valign">center</property>
+        <property name="vexpand">1</property>
+        <child>
+          <object class="GtkImage" id="nexus-logo">
+            <property name="name">nexus-logo</property>
+            <property name="file">/usr/share/nexus/lock/logo.png</property>
+          </object>
+        </child>
+        <child>
+          <object class="GtkLabel" id="nexus-wordmark">
+            <property name="name">nexus-wordmark</property>
+            <property name="label">NEXUS OS</property>
+          </object>
+        </child>
+        <child>
+          <object class="GtkBox" id="info-box">
+            <property name="name">info-box</property>
+            <property name="halign">center</property>
+            <property name="orientation">vertical</property>
+            <child>
+              <object class="GtkBox" id="time-box">
+                <property name="name">time-box</property>
+                <property name="halign">center</property>
+                <property name="orientation">vertical</property>
+                <child>
+                  <object class="GtkLabel" id="clock-label">
+                    <property name="name">clock-label</property>
+                    <property name="halign">center</property>
+                  </object>
+                </child>
+                <child>
+                  <object class="GtkLabel" id="date-label">
+                    <property name="name">date-label</property>
+                    <property name="halign">center</property>
+                  </object>
+                </child>
+              </object>
+            </child>
+          </object>
+        </child>
+        <child>
+          <object class="GtkLabel" id="nexus-avatar">
+            <property name="name">nexus-avatar</property>
+            <property name="label">@INITIAL@</property>
+            <property name="halign">center</property>
+          </object>
+        </child>
+        <child>
+          <object class="GtkLabel" id="nexus-user">
+            <property name="name">nexus-user</property>
+            <property name="label">@NAME@</property>
+            <property name="halign">center</property>
+          </object>
+        </child>
+        <child>
+          <object class="GtkRevealer" id="body-revealer">
+            <property name="transition-type">crossfade</property>
+            <property name="transition-duration">220</property>
+            <property name="reveal-child">0</property>
+            <child>
+              <object class="GtkGrid" id="body-grid">
+                <property name="name">body-grid</property>
+                <property name="halign">center</property>
+                <property name="row-spacing">10</property>
+                <child>
+                  <object class="GtkLabel" id="input-label">
+                    <property name="name">input-label</property>
+                    <property name="label"></property>
+                    <property name="visible">0</property>
+                    <property name="no-show-all">1</property>
+                  </object>
+                  <packing>
+                    <property name="left-attach">0</property>
+                    <property name="top-attach">0</property>
+                  </packing>
+                </child>
+                <child>
+                  <object class="GtkBox" id="nexus-pill">
+                    <property name="name">nexus-pill</property>
+                    <property name="orientation">horizontal</property>
+                    <child>
+                      <object class="GtkEntry" id="input-field">
+                        <property name="name">input-field</property>
+                        <property name="width-request">330</property>
+                        <property name="visibility">0</property>
+                        <property name="caps-lock-warning">0</property>
+                        <property name="input-purpose">password</property>
+                        <property name="placeholder-text" translatable="no">Contraseña</property>
+                        <signal name="activate" handler="window_pw_check"/>
+                      </object>
+                    </child>
+                    <child>
+                      <object class="GtkButton" id="unlock-button">
+                        <property name="name">unlock-button</property>
+                        <property name="label">→</property>
+                        <property name="tooltip-text">Entrar</property>
+                        <signal name="clicked" handler="window_pw_check"/>
+                      </object>
+                    </child>
+                  </object>
+                  <packing>
+                    <property name="left-attach">1</property>
+                    <property name="top-attach">0</property>
+                    <property name="width">2</property>
+                  </packing>
+                </child>
+                <child>
+                  <object class="GtkRevealer" id="message-revealer">
+                    <property name="transition-type">none</property>
+                    <property name="no-show-all">1</property>
+                    <child>
+                      <object class="GtkScrolledWindow" id="message-scrolled-window">
+                        <property name="hscrollbar-policy">never</property>
+                        <property name="max-content-height">256</property>
+                        <property name="propagate-natural-height">1</property>
+                        <child>
+                          <object class="GtkViewport">
+                            <child>
+                              <object class="GtkBox" id="message-box">
+                                <property name="orientation">vertical</property>
+                                <property name="homogeneous">1</property>
+                              </object>
+                            </child>
+                          </object>
+                        </child>
+                      </object>
+                    </child>
+                  </object>
+                  <packing>
+                    <property name="left-attach">1</property>
+                    <property name="top-attach">1</property>
+                    <property name="width">2</property>
+                  </packing>
+                </child>
+                <child>
+                  <object class="GtkBox">
+                    <property name="halign">center</property>
+                    <property name="spacing">8</property>
+                    <child>
+                      <object class="GtkLabel" id="warning-label">
+                        <property name="name">warning-label</property>
+                      </object>
+                    </child>
+                    <child>
+                      <object class="GtkLabel" id="error-label">
+                        <property name="name">error-label</property>
+                      </object>
+                    </child>
+                  </object>
+                  <packing>
+                    <property name="left-attach">1</property>
+                    <property name="top-attach">2</property>
+                    <property name="width">2</property>
+                  </packing>
+                </child>
+                <child>
+                  <object class="GtkLabel" id="nexus-hint">
+                    <property name="name">nexus-hint</property>
+                    <property name="label">Escribe tu contraseña y pulsa Intro</property>
+                    <property name="halign">center</property>
+                  </object>
+                  <packing>
+                    <property name="left-attach">1</property>
+                    <property name="top-attach">3</property>
+                    <property name="width">2</property>
+                  </packing>
+                </child>
+              </object>
+            </child>
+          </object>
+        </child>
+      </object>
+                </child>
+              </object>
+            </child>
+          </object>
+        </child>
+<!-- bottom left, as in docs/concepto/3-bloqueo-concepto.png: "NEXUS AI · greeting" (dropped when there is none) and
+     "Monitor · system status" (filled by nexus-lock; dropped when it cannot be read). The labels are Pango markup, so
+     nexus-lock escapes the texts twice (markup inside XML). -->
+    <child type="overlay">
+      <object class="GtkBox" id="nexus-cards">
+        <property name="name">nexus-cards</property>
+        <property name="orientation">vertical</property>
+        <property name="spacing">12</property>
+        <property name="halign">start</property>
+        <property name="valign">end</property>
+<!--card-->
+        <child>
+          <object class="GtkBox" id="nexus-card">
+            <property name="name">nexus-card</property>
+            <property name="orientation">horizontal</property>
+            <property name="spacing">14</property>
+            <style><class name="nexus-card"/></style>
+            <child>
+              <object class="GtkImage">
+                <property name="file">/usr/share/nexus/lock/ai.png</property>
+                <property name="valign">center</property>
+              </object>
+            </child>
+            <child>
+              <object class="GtkLabel" id="nexus-card-text">
+                <property name="name">nexus-card-text</property>
+                <property name="use-markup">1</property>
+                <property name="label">&lt;span foreground="#ffffff" weight="bold"&gt;NEXUS AI&lt;/span&gt; · @GREETING@</property>
+                <property name="xalign">0</property>
+                <property name="valign">center</property>
+                <property name="wrap">1</property>
+                <property name="max-width-chars">31</property>
+                <style><class name="nexus-card-text"/></style>
+              </object>
+            </child>
+          </object>
+        </child>
+<!--/card-->
+<!--monitor-->
+        <child>
+          <object class="GtkBox" id="nexus-monitor">
+            <property name="name">nexus-monitor</property>
+            <property name="orientation">horizontal</property>
+            <property name="spacing">14</property>
+            <style><class name="nexus-card"/></style>
+            <child>
+              <object class="GtkImage">
+                <property name="file">/usr/share/nexus/lock/monitor.png</property>
+                <property name="valign">center</property>
+              </object>
+            </child>
+            <child>
+              <object class="GtkLabel" id="nexus-monitor-text">
+                <property name="name">nexus-monitor-text</property>
+                <property name="use-markup">1</property>
+                <property name="label">&lt;span foreground="#ffffff" weight="bold"&gt;Monitor&lt;/span&gt; · @MONITOR@</property>
+                <property name="xalign">0</property>
+                <property name="valign">center</property>
+                <property name="wrap">1</property>
+                <property name="max-width-chars">31</property>
+                <style><class name="nexus-card-text"/></style>
+              </object>
+            </child>
+          </object>
+        </child>
+<!--/monitor-->
+      </object>
+    </child>
+      </object>
+    </child>
+  </object>
+</interface>

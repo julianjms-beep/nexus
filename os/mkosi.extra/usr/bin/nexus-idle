@@ -1,0 +1,13 @@
+#!/bin/sh
+# NEXUS automatic lock (nexus-idle.service, part of the desktop session): the screen locks by itself after the
+# minutes chosen in Ajustes → Privacidad y seguridad (5 if never chosen; 0 = never), and always before the computer
+# goes to sleep. nexus-sessiond restarts this service when the person changes the minutes.
+set -u
+command -v swayidle >/dev/null 2>&1 || exit 0   # a NEXUS without swayidle yet: nothing to do (Ajustes says so)
+prefs="${XDG_CONFIG_HOME:-$HOME/.config}/nexus/prefs.json"
+min=$(jq -r '.lockAfter // 5' "$prefs" 2>/dev/null) || min=5
+case "$min" in '' | *[!0-9]*) min=5 ;; esac
+[ "$min" -gt 240 ] && min=240
+set -- -w before-sleep /usr/bin/nexus-lock lock /usr/bin/nexus-lock
+[ "$min" -gt 0 ] && set -- "$@" timeout $((min * 60)) /usr/bin/nexus-lock
+exec swayidle "$@"

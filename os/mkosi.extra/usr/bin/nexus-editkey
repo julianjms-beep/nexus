@@ -1,0 +1,18 @@
+#!/bin/sh
+# Super (⌘ on a Mac keyboard, and on the Mac that runs the NEXUS VM) + C V X A Z = copy, paste, cut, select all,
+# undo; Super+Shift+Z = redo. labwc binds those keys (etc/xdg/labwc/rc.xml) and this sends the usual Ctrl shortcut
+# to the window in front with wtype. NEXUS already uses Super like ⌘ (Super+Q closes, Super+L locks).
+# In the terminal (foot) Ctrl+C stops the running program, so there ⌘C / ⌘V become foot's Ctrl+Shift+C / V and the
+# other keys do nothing.
+k=$1
+case $k in c | v | x | a | z | Z) ;; *) exit 2 ;; esac
+if wlrctl toplevel find app_id:foot state:active >/dev/null 2>&1; then
+  case $k in
+    c | v) exec wtype -M ctrl -M shift "$k" -m shift -m ctrl ;;
+    *) exit 0 ;;
+  esac
+fi
+case $k in
+  Z) exec wtype -M ctrl -M shift z -m shift -m ctrl ;;
+  *) exec wtype -M ctrl "$k" -m ctrl ;;
+esac

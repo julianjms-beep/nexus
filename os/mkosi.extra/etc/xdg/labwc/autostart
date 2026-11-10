@@ -1,0 +1,41 @@
+# Boot splash first. Until the shell's first frame (~0.7 s) labwc would show black and the mark would blink off and
+# on, so swaybg puts the same picture plymouth showed back at once: a flat background and the centre of the splash
+# pasted 1:1 in the middle (os/art/make-boot-frames.py: one small picture per interface size, nothing resampled, so
+# it is up within milliseconds). The shell's wallpaper and start-up fade are created later and land on top of it;
+# swaybg quits by itself after 20 s. (A client drawing at physical size with wp_viewporter was tried on 09-11: same
+# result, the ~0.1 s left is labwc's own first frame, before any client can draw. See NEXUS-RESUME.md.)
+# A scale change while the picture is up would show it zoomed for a frame, so the interface size the last session
+# used on this screen (remembered by nexus-display) is set first: one wlr-randr call, ~1 ms.
+mode= out=
+for c in /sys/class/drm/card*-*; do
+  [ "$(cat "$c/status" 2>/dev/null)" = connected ] || continue
+  mode=$(head -n 1 "$c/modes" 2>/dev/null); out=${c##*/card[0-9]-}; break
+done
+mode=${mode%%[!0-9x]*}                                   # "1920x1200" (interlaced modes end in "i")
+# VirtualBox on Windows: the screen size the launcher set the VM up for (the firmware's; nexus-boot-display saved it)
+# is usually bigger than the one its virtual graphics card prefers. nexus-display does the same on the login screen.
+want=$(cat /run/nexus-boot-display 2>/dev/null)
+case "$want" in
+  [0-9]*x[0-9]*) if [ -n "$out" ] && [ "$want" != "$mode" ] && wlr-randr --output "$out" --custom-mode "$want" >/dev/null 2>&1; then
+                   mode=$want; fi ;;
+esac
+cache=${XDG_CACHE_HOME:-$HOME/.cache}/nexus/display
+pre=1
+if [ -n "$mode" ] && [ -r "$cache" ]; then
+  while read -r out size sc; do
+    case "$sc" in '' | *[!0-9.]*) continue ;; esac
+    [ "$size" = "$mode" ] && wlr-randr --output "$out" --scale "$sc" >/dev/null 2>&1 && pre=$sc
+  done < "$cache"
+fi
+case "$pre" in 1.25 | 1.5) ;; *) pre=1 ;; esac          # 200 %: buffer pixels = screen pixels, like 100 %
+splash=/usr/share/nexus/splash/boot/centre@$pre.png
+if [ -f "$splash" ] && command -v swaybg >/dev/null 2>&1; then
+  timeout 20 swaybg -m center -c 080812 -i "$splash" >/dev/null 2>&1 &
+fi
+# NEXUS session services run as systemd user units (restart on crash, stopped on logout).
+dbus-update-activation-environment --systemd WAYLAND_DISPLAY XDG_CURRENT_DESKTOP XDG_SESSION_TYPE QT_QPA_PLATFORM LIBGL_ALWAYS_SOFTWARE XKB_DEFAULT_LAYOUT >/dev/null 2>&1
+# interface size (output scale) before the shell, so it appears at its final size; the shell gets the value (its
+# start-up fade lines up with the boot splash with it) without asking again
+scale=$(nexus-display 2>/dev/null | sed -n '1s/.* at //p')
+systemctl --user set-environment NEXUS_SCALE="${scale:-1}" >/dev/null 2>&1
+systemctl --user start nexus-session.target

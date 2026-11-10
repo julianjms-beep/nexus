@@ -1,0 +1,11 @@
+[Unit]
+Description=NEXUS copy and paste with the Mac that runs this VM (vsock, text only)
+PartOf=nexus-session.target
+ConditionVirtualization=vm
+# only where the VM has a vsock to its host (the Mac's nexus-vm has one; VirtualBox on Windows has none)
+ConditionPathExistsGlob=/sys/bus/virtio/drivers/vmw_vsock_virtio_transport/virtio*
+
+[Service]
+ExecStart=/usr/bin/nexus-clipboard-bridge
+Restart=on-failure
+RestartSec=2

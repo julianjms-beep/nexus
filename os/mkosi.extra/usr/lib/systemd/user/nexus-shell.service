@@ -1,0 +1,9 @@
+[Unit]
+Description=NEXUS shell (wallpaper, bar, dock, NEXUS AI)
+PartOf=nexus-session.target
+After=nexus-sessiond.service
+
+[Service]
+ExecStart=/usr/bin/nexus-shell
+Restart=always
+RestartSec=1

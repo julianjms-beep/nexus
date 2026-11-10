@@ -1,0 +1,16 @@
+#!/bin/sh
+# greetd's default_session (after logging out), run as the greeter user _greetd: a bare labwc whose only client is the
+# NEXUS login screen (nexus-greeter). labwc quits with it (-S), then greetd starts the session the greeter asked for.
+# If the graphical login screen cannot run, fall back to the text greeter so nobody is ever locked out.
+export XDG_SESSION_TYPE=wayland XDG_CURRENT_DESKTOP=NEXUS:wlroots
+export LANG="${LANG:-es_ES.UTF-8}" XKB_DEFAULT_LAYOUT="${XKB_DEFAULT_LAYOUT:-es}" XCURSOR_SIZE=24
+export NO_AT_BRIDGE=1 GDK_BACKEND=wayland
+if systemd-detect-virt -q; then
+  export WLR_RENDERER=pixman WLR_NO_HARDWARE_CURSORS=1
+fi
+fail="${XDG_RUNTIME_DIR:-/tmp}/nexus-greeter.failed"
+rm -f "$fail"
+systemd-cat --identifier=nexus-greeter labwc -C /usr/share/nexus/greeter/labwc -S "sh -c 'nexus-display auto >/dev/null 2>&1; nexus-greeter || touch $fail'" \
+  || touch "$fail"
+[ -e "$fail" ] || exit 0
+exec tuigreet --time --asterisks --remember --greeting 'NEXUS OS' --cmd /usr/bin/nexus-session

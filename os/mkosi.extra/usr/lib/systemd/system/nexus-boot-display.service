@@ -1,0 +1,17 @@
+[Unit]
+Description=Remember the screen size the PC's firmware booted at (NEXUS in VirtualBox on Windows)
+Documentation=file:/usr/lib/nexus/nexus-boot-display
+# virtual machines on PCs only: the Mac's (apple) sets its screen size itself, and real computers need none of this
+ConditionVirtualization=vm
+ConditionVirtualization=!apple
+ConditionPathExists=/sys/kernel/boot_params/data
+DefaultDependencies=no
+After=systemd-tmpfiles-setup.service
+Before=greetd.service display-manager.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/lib/nexus/nexus-boot-display
+
+[Install]
+WantedBy=multi-user.target

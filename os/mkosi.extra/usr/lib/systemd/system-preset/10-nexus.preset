@@ -1,0 +1,11 @@
+# NEXUS OS: services that must be enabled no matter what later preset runs decide.
+enable greetd.service
+enable nexus-engined.service
+enable nexus-firewall.service
+enable nexus-guardd.service
+enable systemd-networkd.service
+enable systemd-resolved.service
+enable systemd-timesyncd.service
+enable ssh.service
+# getty@tty1 is MASKED instead (/etc/systemd/system/getty@tty1.service -> /dev/null): presets cannot disable a single
+# instance of a template, and a text login on tty1 steals the VT from greetd, so labwc exits and the greeter shows.

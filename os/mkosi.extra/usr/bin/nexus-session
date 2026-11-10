@@ -1,0 +1,25 @@
+#!/bin/sh
+# NEXUS desktop session, started by greetd as the logged-in user: labwc (Wayland compositor) + NEXUS shell.
+# --initial: greetd's power-on session (no password typed). If the person asked for the password at power-on (the
+# flag nexus-guardd keeps), step aside: greetd then shows the login screen, which starts this script without --initial.
+if [ "${1:-}" = --initial ] && [ -e /var/lib/nexus-guard/ask-password ]; then exit 0; fi
+export XDG_SESSION_TYPE=wayland XDG_CURRENT_DESKTOP=NEXUS:wlroots XDG_SESSION_DESKTOP=nexus
+export QT_QPA_PLATFORM=wayland QT_QUICK_CONTROLS_STYLE=Basic
+# keyboard: what the first-boot assistant (or `localectl set-x11-keymap`) saved in /etc/default/keyboard; Spanish if none
+XKBLAYOUT= XKBVARIANT= XKBOPTIONS=
+[ -r /etc/default/keyboard ] && . /etc/default/keyboard
+export XKB_DEFAULT_LAYOUT="${XKBLAYOUT:-es}"
+[ -n "$XKBVARIANT" ] && export XKB_DEFAULT_VARIANT="$XKBVARIANT"
+# Apple keyboards (a Mac running NEXUS in a VM, or an Apple keyboard on a PC): the left Option key types like on
+# macOS (Option+2 = @, Option+3 = #, Option+E = €, Option+1 = |…) instead of being a plain Alt. Option+Tab and
+# Cmd+Tab still switch windows, Option+Space still opens NEXUS AI (rc.xml binds them with M = AltGr).
+if [ -z "$XKBOPTIONS" ] && grep -q '^N: Name="Apple.*[Kk]eyboard' /proc/bus/input/devices 2>/dev/null; then
+  XKBOPTIONS=lv3:lalt_switch
+fi
+[ -n "$XKBOPTIONS" ] && export XKB_DEFAULT_OPTIONS="$XKBOPTIONS"
+if systemd-detect-virt -q; then
+  # virtual GPUs without 3D: software rendering everywhere
+  export WLR_RENDERER=pixman WLR_NO_HARDWARE_CURSORS=1 LIBGL_ALWAYS_SOFTWARE=1
+fi
+# labwc's own messages go to the journal (journalctl -t labwc); systemd-cat execs it, so greetd still waits on labwc itself
+exec systemd-cat --identifier=labwc labwc

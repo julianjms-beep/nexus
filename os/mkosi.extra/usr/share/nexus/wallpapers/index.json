@@ -1,0 +1,188 @@
+{
+ "version": 1,
+ "images": {
+  "aurora": {
+   "file": "aurora.png",
+   "thumb": "thumbs/aurora.jpg",
+   "ink": "light",
+   "accent": "#7c6cff",
+   "name": "Aurora"
+  },
+  "cumbres-amanecer": {
+   "file": "cumbres-amanecer.jpg",
+   "thumb": "thumbs/cumbres-amanecer.jpg",
+   "ink": "light",
+   "accent": "#e07a8f",
+   "name": "Cumbres · amanecer"
+  },
+  "cumbres-dia": {
+   "file": "cumbres-dia.jpg",
+   "thumb": "thumbs/cumbres-dia.jpg",
+   "ink": "dark",
+   "accent": "#2f7fd0",
+   "name": "Cumbres · día"
+  },
+  "cumbres-atardecer": {
+   "file": "cumbres-atardecer.jpg",
+   "thumb": "thumbs/cumbres-atardecer.jpg",
+   "ink": "light",
+   "accent": "#f0805f",
+   "name": "Cumbres · atardecer"
+  },
+  "cumbres-noche": {
+   "file": "cumbres-noche.jpg",
+   "thumb": "thumbs/cumbres-noche.jpg",
+   "ink": "light",
+   "accent": "#6d83e8",
+   "name": "Cumbres · noche"
+  },
+  "dunas-dia": {
+   "file": "dunas-dia.jpg",
+   "thumb": "thumbs/dunas-dia.jpg",
+   "ink": "dark",
+   "accent": "#d0804c",
+   "name": "Dunas"
+  },
+  "dunas-noche": {
+   "file": "dunas-noche.jpg",
+   "thumb": "thumbs/dunas-noche.jpg",
+   "ink": "light",
+   "accent": "#8a76e0",
+   "name": "Dunas · noche"
+  },
+  "marea-clara": {
+   "file": "marea-clara.jpg",
+   "thumb": "thumbs/marea-clara.jpg",
+   "ink": "dark",
+   "accent": "#2a8ec1",
+   "name": "Marea"
+  },
+  "marea-oscura": {
+   "file": "marea-oscura.jpg",
+   "thumb": "thumbs/marea-oscura.jpg",
+   "ink": "light",
+   "accent": "#38b6e8",
+   "name": "Marea · noche"
+  },
+  "seda-clara": {
+   "file": "seda-clara.jpg",
+   "thumb": "thumbs/seda-clara.jpg",
+   "ink": "dark",
+   "accent": "#7c6cff",
+   "name": "Seda"
+  },
+  "seda-oscura": {
+   "file": "seda-oscura.jpg",
+   "thumb": "thumbs/seda-oscura.jpg",
+   "ink": "light",
+   "accent": "#9a7cff",
+   "name": "Seda · oscuro"
+  },
+  "cristal-claro": {
+   "file": "cristal-claro.jpg",
+   "thumb": "thumbs/cristal-claro.jpg",
+   "ink": "dark",
+   "accent": "#6d5cf0",
+   "name": "Cristal"
+  },
+  "cristal-oscuro": {
+   "file": "cristal-oscuro.jpg",
+   "thumb": "thumbs/cristal-oscuro.jpg",
+   "ink": "light",
+   "accent": "#7c6cff",
+   "name": "Cristal · oscuro"
+  },
+  "nebula": {
+   "file": "nebula.jpg",
+   "thumb": "thumbs/nebula.jpg",
+   "ink": "light",
+   "accent": "#b04cff",
+   "name": "Nébula"
+  },
+  "pantera": {
+   "file": "pantera.jpg",
+   "thumb": "thumbs/pantera.jpg",
+   "ink": "light",
+   "accent": "#22d3ee",
+   "name": "Pantera"
+  }
+ },
+ "collection": [
+  {
+   "id": "pantera",
+   "name": "Pantera",
+   "light": "pantera",
+   "dark": "pantera"
+  },
+  {
+   "id": "aurora",
+   "name": "Aurora",
+   "light": "aurora",
+   "dark": "aurora"
+  },
+  {
+   "id": "cumbres",
+   "name": "Cumbres",
+   "light": "cumbres-dia",
+   "dark": "cumbres-noche"
+  },
+  {
+   "id": "cumbres-hora",
+   "name": "Cumbres según la hora",
+   "dynamic": [
+    [
+     6,
+     "cumbres-amanecer"
+    ],
+    [
+     9,
+     "cumbres-dia"
+    ],
+    [
+     18,
+     "cumbres-atardecer"
+    ],
+    [
+     21,
+     "cumbres-noche"
+    ]
+   ]
+  },
+  {
+   "id": "atardecer",
+   "name": "Atardecer",
+   "light": "cumbres-atardecer",
+   "dark": "cumbres-atardecer"
+  },
+  {
+   "id": "dunas",
+   "name": "Dunas",
+   "light": "dunas-dia",
+   "dark": "dunas-noche"
+  },
+  {
+   "id": "marea",
+   "name": "Marea",
+   "light": "marea-clara",
+   "dark": "marea-oscura"
+  },
+  {
+   "id": "seda",
+   "name": "Seda",
+   "light": "seda-clara",
+   "dark": "seda-oscura"
+  },
+  {
+   "id": "cristal",
+   "name": "Cristal",
+   "light": "cristal-claro",
+   "dark": "cristal-oscuro"
+  },
+  {
+   "id": "nebula",
+   "name": "Nébula",
+   "light": "nebula",
+   "dark": "nebula"
+  }
+ ]
+}

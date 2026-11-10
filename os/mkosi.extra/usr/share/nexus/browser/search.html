@@ -1,0 +1,486 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NEXUS Search</title>
+<!-- NEXUS Search, the Navegador's own search page. Browser.qml fills it in (nothing here talks to the network or to
+     NEXUS by itself): window.nexusLocal (sessiond GET /search: apps, Ajustes, files, the pages you visited),
+     nexusWiki (Wikipedia's summary), nexusWeb (Claude's web search: results + a short answer with its sources) and
+     nexusWebState. Clicks that need NEXUS (open an app, change a setting) go back as console messages
+     "nexus-search:{json}", which Browser.qml accepts only from this file. Everything shown is set with textContent. -->
+<style>
+  :root { --bg: #090b12; --panel: rgba(20, 24, 38, .66); --panel2: rgba(255, 255, 255, .045); --border: rgba(255, 255, 255, .085);
+          --text: #e9ecfb; --dim: #9aa2c4; --faint: #5f6789; --accent: #7c6cff; --accent2: #38d9ff; --link: #a99dff;
+          --green: #3ddc97; --field: rgba(255, 255, 255, .065); --shadow: 0 18px 50px rgba(0, 0, 0, .35); }
+  :root.light { --bg: #f3f5fa; --panel: rgba(255, 255, 255, .86); --panel2: rgba(0, 0, 0, .03); --border: rgba(0, 0, 0, .08);
+                --text: #141a2c; --dim: #59617f; --faint: #9aa1bb; --link: #5b47f0; --field: rgba(0, 0, 0, .045); --shadow: 0 14px 40px rgba(20, 30, 70, .10); }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body { font: 15px/1.5 Inter, system-ui, sans-serif; color: var(--text); background: var(--bg); min-height: 100vh; -webkit-font-smoothing: antialiased; }
+  a { color: inherit; text-decoration: none; }
+  button { font: inherit; color: inherit; }
+  .glow { position: fixed; inset: -30% -10% auto; height: 520px; z-index: -1; filter: blur(70px); opacity: .42; pointer-events: none;
+          background: radial-gradient(35% 45% at 18% 40%, #6d3cff 0, transparent 70%), radial-gradient(30% 40% at 80% 30%, #13c8ff 0, transparent 70%); }
+  :root.light .glow { opacity: .16; }
+
+  /* ---- top: the panther, the search field, the tabs */
+  header { position: sticky; top: 0; z-index: 5; backdrop-filter: blur(24px) saturate(1.4); background: color-mix(in srgb, var(--bg) 78%, transparent);
+           border-bottom: 1px solid var(--border); }
+  .bar { max-width: 1180px; margin: 0 auto; padding: 14px 28px 0; display: flex; align-items: center; gap: 22px; }
+  .brand { display: flex; align-items: center; gap: 10px; flex: none; }
+  .brand img { width: 34px; height: 34px; filter: drop-shadow(0 0 10px rgba(63, 240, 255, .35)); }
+  .brand span { font-weight: 650; letter-spacing: .02em; font-size: 16px; }
+  .brand span b { font-weight: 650; background: linear-gradient(90deg, var(--accent2), var(--accent)); -webkit-background-clip: text; color: transparent; }
+  form { flex: 1; max-width: 680px; position: relative; }
+  form input { width: 100%; height: 44px; border-radius: 13px; border: 1px solid var(--border); background: var(--field); color: var(--text);
+               font: 16px Inter, sans-serif; padding: 0 44px 0 42px; outline: none; transition: border-color .15s, box-shadow .15s; }
+  form input:focus { border-color: var(--accent); box-shadow: 0 0 0 4px rgba(124, 108, 255, .22); }
+  form svg { position: absolute; left: 14px; top: 13px; color: var(--dim); }
+  form kbd { position: absolute; right: 12px; top: 11px; font: 12px "JetBrains Mono", monospace; color: var(--faint); border: 1px solid var(--border);
+             border-radius: 6px; padding: 1px 6px; }
+  nav { max-width: 1180px; margin: 0 auto; padding: 8px 28px 0 84px; display: flex; gap: 4px; }
+  nav button { background: none; border: 0; padding: 8px 12px 10px; color: var(--dim); cursor: pointer; font-size: 14px; position: relative; border-radius: 8px 8px 0 0; }
+  nav button:hover { color: var(--text); }
+  nav button.on { color: var(--text); font-weight: 600; }
+  nav button.on::after { content: ""; position: absolute; left: 12px; right: 12px; bottom: -1px; height: 2px; border-radius: 2px; background: var(--accent); }
+  nav button small { color: var(--faint); font-weight: 400; margin-left: 4px; }
+
+  /* ---- the page: results on the left, Wikipedia on the right */
+  main { max-width: 1180px; margin: 0 auto; padding: 22px 28px 60px 84px; display: grid; grid-template-columns: minmax(0, 680px) 340px; gap: 44px; align-items: start; }
+  @media (max-width: 1100px) { main { grid-template-columns: minmax(0, 1fr); padding-left: 28px; } nav { padding-left: 28px; } aside { order: -1; } }
+  .col { display: flex; flex-direction: column; gap: 26px; min-width: 0; }
+  h2 { font-size: 13px; font-weight: 600; color: var(--dim); text-transform: uppercase; letter-spacing: .08em; margin: 0 0 10px; display: flex; align-items: center; gap: 8px; }
+  h2 .n { font-weight: 500; color: var(--faint); letter-spacing: 0; text-transform: none; }
+  .card { background: var(--panel); border: 1px solid var(--border); border-radius: 18px; backdrop-filter: blur(22px); box-shadow: var(--shadow); }
+
+  /* NEXUS AI's answer */
+  .answer { padding: 18px 20px 16px; position: relative; overflow: hidden; }
+  .answer::before { content: ""; position: absolute; inset: 0 0 auto; height: 2px; background: linear-gradient(90deg, var(--accent2), var(--accent), #c13cff); opacity: .8; }
+  .answer .who { display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 600; color: var(--dim); margin-bottom: 8px; }
+  .answer .who svg { color: var(--accent2); }
+  .answer p { margin: 0; font-size: 16px; line-height: 1.6; }
+  .answer sup a { display: inline-block; min-width: 17px; height: 17px; line-height: 17px; text-align: center; font-size: 11px; font-weight: 600; border-radius: 6px;
+                  background: rgba(124, 108, 255, .2); color: var(--link); margin: 0 1px; vertical-align: 2px; }
+  .answer sup a:hover { background: var(--accent); color: #fff; }
+  .sources { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+  .sources a { display: flex; align-items: center; gap: 7px; padding: 5px 10px 5px 6px; border-radius: 10px; background: var(--panel2); border: 1px solid var(--border); font-size: 12.5px; color: var(--dim); max-width: 260px; }
+  .sources a:hover { border-color: var(--accent); color: var(--text); }
+  .sources a span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .num { flex: none; width: 18px; height: 18px; border-radius: 6px; background: rgba(124, 108, 255, .2); color: var(--link); font-size: 11px; font-weight: 700; display: grid; place-items: center; }
+  .note { margin-top: 12px; font-size: 12px; color: var(--faint); }
+  .shimmer { height: 13px; border-radius: 7px; margin: 9px 0; background: linear-gradient(90deg, var(--panel2) 25%, rgba(124, 108, 255, .18) 50%, var(--panel2) 75%);
+             background-size: 300% 100%; animation: sh 1.4s ease-in-out infinite; }
+  @keyframes sh { from { background-position: 100% 0; } to { background-position: 0 0; } }
+  .cta { display: inline-flex; align-items: center; gap: 8px; margin-top: 4px; padding: 9px 14px; border-radius: 11px; border: 1px solid var(--border);
+         background: linear-gradient(135deg, rgba(124, 108, 255, .25), rgba(56, 217, 255, .14)); cursor: pointer; font-weight: 600; font-size: 14px; }
+  .cta:hover { border-color: var(--accent); }
+  .instant { padding: 16px 20px 18px; }
+  .instant .expr { font-size: 14px; color: var(--dim); }
+  .instant .val { font-size: 38px; font-weight: 650; letter-spacing: -.5px; margin-top: 2px; }
+  .keyhint { padding: 16px 20px; display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+  .keyhint div { flex: 1 1 320px; font-size: 14px; line-height: 1.5; color: var(--dim); }
+  .keyhint b { display: block; color: var(--text); font-size: 15px; margin-bottom: 2px; }
+  .keyhint .cta { margin: 0; }
+  .cta small { font-weight: 400; color: var(--dim); }
+
+  /* "En tu equipo" */
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; }
+  .chip { display: flex; align-items: center; gap: 9px; padding: 8px 14px 8px 8px; border-radius: 12px; background: var(--panel); border: 1px solid var(--border); cursor: pointer; font-weight: 500; }
+  .chip:hover { border-color: var(--accent); transform: translateY(-1px); }
+  .chip img { width: 26px; height: 26px; border-radius: 7px; }
+  .chip .ico { width: 26px; height: 26px; border-radius: 7px; display: grid; place-items: center; background: rgba(124, 108, 255, .18); color: var(--link); }
+  .chip small { color: var(--faint); font-weight: 400; }
+  .rows { display: flex; flex-direction: column; }
+  .row { display: flex; gap: 12px; align-items: center; padding: 9px 10px; border-radius: 11px; cursor: pointer; }
+  .row:hover { background: var(--panel2); }
+  .row img { width: 22px; height: 22px; flex: none; }
+  .row b { font-weight: 500; }
+  .row small { display: block; color: var(--faint); font-size: 12.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .row > div { min-width: 0; }
+
+  /* results (web and the pages you visited) */
+  .res { padding: 4px 0 18px; }
+  .res .site { display: flex; align-items: center; gap: 10px; font-size: 13px; color: var(--dim); min-width: 0; }
+  .res .site span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .fav { flex: none; width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center; font-size: 12px; font-weight: 700; color: #fff; }
+  .res h3 { margin: 4px 0 3px; font-size: 18.5px; font-weight: 500; line-height: 1.3; }
+  .res h3 a { color: var(--link); }
+  .res h3 a:hover { text-decoration: underline; text-underline-offset: 3px; }
+  .res p { margin: 0; color: var(--dim); font-size: 14px; }
+  .res .meta { color: var(--faint); font-size: 12.5px; }
+  .answer p a.site-link { color: var(--link); text-decoration: underline; text-decoration-color: rgba(169, 157, 255, .35); text-underline-offset: 3px; }
+  .res.best { padding: 14px 16px 16px; margin: 0 -16px 14px; border-radius: 16px; background: var(--panel); border: 1px solid var(--border); }
+  .res.best h3 { font-size: 21px; font-weight: 600; }
+  .res.best p { color: var(--text); font-size: 14.5px; }
+  .res .tag { font-size: 11px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--accent); margin-left: 4px; white-space: nowrap; }
+  .res .x { margin-left: auto; background: none; border: 0; color: var(--faint); cursor: pointer; font-size: 12px; padding: 2px 6px; border-radius: 6px; visibility: hidden; }
+  .res:hover .x { visibility: visible; }
+  .res .x:hover { color: var(--text); background: var(--panel2); }
+  .empty { color: var(--faint); font-size: 14px; padding: 6px 0; }
+  .elsewhere { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; color: var(--faint); font-size: 13px; }
+  .elsewhere a { padding: 5px 11px; border-radius: 9px; border: 1px solid var(--border); color: var(--dim); }
+  .elsewhere a:hover { border-color: var(--accent); color: var(--text); }
+
+  /* Wikipedia */
+  aside { position: sticky; top: 128px; }
+  .wiki { overflow: hidden; }
+  .wiki img { width: 100%; max-height: 220px; object-fit: cover; display: block; background: var(--panel2); }
+  .wiki .in { padding: 16px 18px 18px; }
+  .wiki h3 { margin: 0 0 2px; font-size: 22px; font-weight: 650; }
+  .wiki .src { font-size: 12px; color: var(--faint); margin-bottom: 10px; }
+  .wiki p { margin: 0 0 12px; font-size: 14px; color: var(--dim); line-height: 1.6; }
+  .wiki a.more { font-size: 13.5px; font-weight: 600; color: var(--link); }
+
+  /* settings */
+  .prefs { padding: 14px 18px; display: flex; flex-direction: column; gap: 12px; font-size: 13.5px; }
+  .prefs .line { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+  .prefs .line > span { color: var(--dim); min-width: 190px; }
+  .seg { display: inline-flex; padding: 3px; border-radius: 10px; background: var(--panel2); border: 1px solid var(--border); }
+  .seg button { border: 0; background: none; padding: 4px 11px; border-radius: 7px; cursor: pointer; color: var(--dim); font-size: 13px; }
+  .seg button.on { background: var(--accent); color: #fff; font-weight: 600; }
+  .link { background: none; border: 0; color: var(--link); cursor: pointer; padding: 0; font-size: 13px; }
+  .prefs .hint { color: var(--faint); font-size: 12px; }
+
+  [hidden] { display: none !important; }
+  body[data-tab="local"] #webBox, body[data-tab="local"] #aiBox, body[data-tab="local"] aside { display: none; }
+  body[data-tab="web"] #localBox, body[data-tab="web"] #pagesBox { display: none; }
+  .fade { animation: in .28s ease-out both; }
+  @keyframes in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+  @media (prefers-reduced-motion: reduce) { .fade, .shimmer { animation: none; } }
+</style>
+</head>
+<body data-tab="all">
+<div class="glow"></div>
+<header>
+  <div class="bar">
+    <a class="brand" href="newtab.html" id="home"><img src="../icons/pantera-logo.png" alt=""><span>NEXUS <b>Search</b></span></a>
+    <form id="f" autocomplete="off" role="search">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="11" cy="11" r="7.5"/><path d="M21 21l-4.6-4.6"/></svg>
+      <input id="q" name="q" aria-label="Buscar" spellcheck="false">
+      <kbd>/</kbd>
+    </form>
+  </div>
+  <nav id="tabs">
+    <button data-tab="all" class="on">Todo</button>
+    <button data-tab="local">En tu equipo <small id="nLocal"></small></button>
+    <button data-tab="web">Web <small id="nWeb"></small></button>
+  </nav>
+</header>
+
+<main>
+  <div class="col">
+    <section id="instantBox" class="card instant" hidden></section>
+    <section id="aiBox" class="card answer" hidden></section>
+    <section id="localBox" hidden>
+      <h2>En tu equipo</h2>
+      <div id="chips" class="chips"></div>
+      <div id="files" class="rows"></div>
+    </section>
+    <section id="pagesBox" hidden>
+      <h2>Ya visitadas por ti <span class="n" id="pagesN"></span></h2>
+      <div id="pages"></div>
+    </section>
+    <section id="webBox" hidden>
+      <h2>En la web <span class="n" id="webN"></span></h2>
+      <div id="web"></div>
+    </section>
+    <section id="keyBox" class="card keyhint" hidden></section>
+    <section id="noneBox" class="empty" hidden></section>
+    <section>
+      <div class="elsewhere" id="elsewhere"><span>Buscar también en</span></div>
+    </section>
+    <section id="prefsBox" class="card prefs" hidden>
+      <div class="line"><span>Respuesta de NEXUS AI</span>
+        <div class="seg" id="segWeb"><button data-v="auto">Siempre</button><button data-v="manual">Al pulsar</button><button data-v="off">Nunca</button></div></div>
+      <div class="line"><span>Recordar las páginas que visito</span>
+        <div class="seg" id="segMem"><button data-v="true">Sí</button><button data-v="false">No</button></div>
+        <button class="link" id="wipe">Borrar lo recordado</button></div>
+      <div class="hint" id="prefsHint">Lo que recuerda NEXUS Search se queda solo en este equipo. Nunca guarda páginas con contraseña, de pago o de inicio de sesión.
+        Con un servicio de búsqueda (Ajustes → Buscador) los resultados son instantáneos y NEXUS AI solo escribe el resumen (menos de 0,01 $). Sin él, toda la búsqueda la hace Claude con tu clave (entre 0,01 y 0,03 $). Repetir una búsqueda en 30 minutos no cuesta nada.</div>
+    </section>
+  </div>
+  <aside id="wikiBox" hidden></aside>
+</main>
+
+<script>
+"use strict";
+const $ = (id) => document.getElementById(id);
+const params = new URLSearchParams(location.search);
+const Q = (params.get("q") || "").trim();
+const LIGHT = params.get("theme") === "light";
+if (LIGHT) document.documentElement.classList.add("light");
+document.title = Q ? Q + " — NEXUS Search" : "NEXUS Search";
+$("q").value = Q;
+$("home").href = "newtab.html" + (LIGHT ? "?theme=light" : "");
+
+// ---- tiny DOM helpers (text only, never HTML)
+function el(tag, cls, text) { const e = document.createElement(tag); if (cls) e.className = cls; if (text !== undefined) e.textContent = text; return e; }
+function webUrl(u) { try { const x = new URL(String(u)); return (x.protocol === "https:" || x.protocol === "http:") ? x : null; } catch (e) { return null; } }
+function hostOf(u) { const x = webUrl(u); return x ? x.hostname.replace(/^www\./, "") : ""; }
+function crumbs(u) { const x = webUrl(u); if (!x) return ""; let p = []; try { p = decodeURIComponent(x.pathname).split("/").filter(Boolean).slice(0, 3); } catch (e) { p = []; } return [x.hostname.replace(/^www\./, "")].concat(p).join(" › "); }
+const HUES = [262, 196, 330, 150, 28, 210, 285, 175];
+function fav(host) {
+  const f = el("span", "fav", (host[0] || "?").toUpperCase());
+  let h = 0; for (const c of host) h = (h * 31 + c.charCodeAt(0)) >>> 0;
+  f.style.background = "hsl(" + HUES[h % HUES.length] + " 62% 48%)";
+  return f;
+}
+function ago(iso) {
+  const d = (Date.now() - Date.parse(iso)) / 1000; if (!isFinite(d)) return "";
+  if (d < 90) return "hace un momento"; if (d < 3600) return "hace " + Math.round(d / 60) + " min";
+  if (d < 86400) return "hace " + Math.round(d / 3600) + " h"; if (d < 172800) return "ayer";
+  return "hace " + Math.round(d / 86400) + " días";
+}
+// a result's age as the search engine gives it ("3 days ago", "April 30, 2025") in Spanish
+function ageEs(a) {
+  a = String(a || "").trim(); if (!a) return "";
+  const m = /^(\d+)\s+(minute|hour|day|week|month|year)s?\s+ago$/i.exec(a);
+  if (m) {
+    let n = Number(m[1]), u = m[2].toLowerCase();
+    if (u === "day" && n >= 365) { n = Math.round(n / 365); u = "year"; } else if (u === "day" && n >= 60) { n = Math.round(n / 30); u = "month"; }
+    const W = { minute: ["minuto", "minutos"], hour: ["hora", "horas"], day: ["día", "días"], week: ["semana", "semanas"], month: ["mes", "meses"], year: ["año", "años"] }[u];
+    return "hace " + n + " " + W[n === 1 ? 0 : 1];
+  }
+  const t = Date.parse(a);
+  return isFinite(t) ? new Date(t).toLocaleDateString("es-ES", { day: "numeric", month: "short", year: "numeric" }) : "";
+}
+// Asks Browser.qml to do something that needs NEXUS (only this page's messages are accepted there)
+function nexus(act, data) { console.log("nexus-search:" + JSON.stringify(Object.assign({ act: act }, data || {}))); }
+
+// ---- search box, "/" to focus, tabs
+$("f").addEventListener("submit", (e) => {
+  e.preventDefault(); const v = $("q").value.trim(); if (!v) return;
+  location.href = "search.html?q=" + encodeURIComponent(v) + (LIGHT ? "&theme=light" : "");
+});
+document.addEventListener("keydown", (e) => {
+  if (e.key === "/" && document.activeElement !== $("q")) { e.preventDefault(); $("q").focus(); $("q").select(); }
+  else if (e.key === "Escape") $("q").blur();
+});
+let tab = "all";
+$("tabs").addEventListener("click", (e) => {
+  const b = e.target.closest("button"); if (!b) return;
+  tab = b.dataset.tab; document.body.dataset.tab = tab;
+  for (const x of $("tabs").children) x.classList.toggle("on", x === b);
+  updateNone();
+});
+for (const [name, base] of [["DuckDuckGo", "https://duckduckgo.com/?q="], ["Google", "https://www.google.com/search?q="], ["Wikipedia", "https://es.wikipedia.org/w/index.php?search="], ["GitHub", "https://github.com/search?q="]]) {
+  const a = el("a", "", name); a.href = base + encodeURIComponent(Q); $("elsewhere").append(a);
+}
+if (!Q) { $("elsewhere").parentElement.hidden = true; }
+
+// ---- "En tu equipo": apps, Ajustes, files, and the pages you have visited
+let haveLocal = false, havePages = false, haveWeb = false, webState = "";
+const APP_ICON = { terminal: "terminal", files: "files", editor: "editor", code: "code", browser: "browser", automations: "automations", connect: "connect", agents: "agents", monitor: "monitor", settings: "settings" };
+window.nexusLocal = function (d) {
+  if (!d || d.q !== Q) return;
+  const chips = $("chips"), files = $("files"); chips.replaceChildren(); files.replaceChildren();
+  for (const a of (d.apps || []).slice(0, 6)) {
+    const c = el("a", "chip fade"); c.href = "#";
+    const img = el("img"); img.src = "../icons/app-" + (APP_ICON[a.id] || "browser") + ".svg"; img.alt = "";
+    c.append(img, el("span", "", a.name), el("small", "", "App"));
+    c.addEventListener("click", (e) => { e.preventDefault(); nexus("launch", { app: a.id }); });
+    chips.append(c);
+  }
+  for (const s of (d.settings || []).slice(0, 4)) {
+    const c = el("a", "chip fade"); c.href = "#";
+    const i = el("span", "ico"); i.append(gear());
+    c.append(i, el("span", "", s.title), el("small", "", "Ajustes"));
+    c.addEventListener("click", (e) => { e.preventDefault(); nexus("settings", { page: s.page }); });
+    chips.append(c);
+  }
+  for (const f of (d.files || []).slice(0, 6)) {
+    const r = el("a", "row fade"); r.href = "#";
+    const img = el("img"); img.src = "../icons/" + (f.dir ? "folder" : /\.(png|jpe?g|gif|webp|heic)$/i.test(f.name) ? "image" : "file") + ".svg"; img.alt = "";
+    const t = el("div"); t.append(el("b", "", f.name), el("small", "", String(f.path).replace(/^\/home\/[^/]+/, "~")));
+    r.append(img, t);
+    r.addEventListener("click", (e) => { e.preventDefault(); nexus("file", { path: f.path, dir: !!f.dir }); });
+    files.append(r);
+  }
+  haveLocal = chips.children.length + files.children.length > 0;
+  $("localBox").hidden = !haveLocal;
+
+  const pages = $("pages"); pages.replaceChildren();
+  for (const p of (d.pages || []).slice(0, 5)) pages.append(result(p.url, p.title, p.snippet, [p.visits > 1 ? p.visits + " visitas" : "1 visita", ago(p.last)].filter(Boolean).join(" · "), true));
+  havePages = pages.children.length > 0;
+  $("pagesBox").hidden = !havePages;
+  $("pagesN").textContent = havePages ? "· solo en este equipo" : "";
+  $("nLocal").textContent = (d.apps || []).length + (d.settings || []).length + (d.files || []).length + (d.pages || []).length || "";
+
+  // settings
+  $("prefsBox").hidden = false;
+  for (const b of $("segWeb").children) b.classList.toggle("on", b.dataset.v === d.web);
+  for (const b of $("segMem").children) b.classList.toggle("on", b.dataset.v === String(d.memory));
+  $("wipe").textContent = d.remembered ? "Borrar lo recordado (" + d.remembered + (d.remembered === 1 ? " página)" : " páginas)") : "";
+  updateNone();
+};
+function gear() {
+  const s = document.createElementNS("http://www.w3.org/2000/svg", "svg"); s.setAttribute("width", "16"); s.setAttribute("height", "16"); s.setAttribute("viewBox", "0 0 24 24");
+  s.setAttribute("fill", "none"); s.setAttribute("stroke", "currentColor"); s.setAttribute("stroke-width", "2"); s.setAttribute("stroke-linecap", "round");
+  const c = document.createElementNS(s.namespaceURI, "circle"); c.setAttribute("cx", "12"); c.setAttribute("cy", "12"); c.setAttribute("r", "3");
+  const p = document.createElementNS(s.namespaceURI, "path"); p.setAttribute("d", "M12 2v3M12 19v3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M2 12h3M19 12h3M4.9 19.1L7 17M17 7l2.1-2.1");
+  s.append(c, p); return s;
+}
+function result(url, title, text, meta, forgettable, best) {
+  const u = webUrl(url); const box = el("div", best ? "res best fade" : "res fade"); if (!u) return box;
+  const site = el("div", "site"); const host = hostOf(url);
+  site.append(fav(host), el("span", "", crumbs(url)));
+  if (best) site.append(el("span", "tag", "Mejor resultado"));
+  if (forgettable) {
+    const x = el("button", "x", "Olvidar"); x.title = "Que NEXUS Search no recuerde esta página";
+    x.addEventListener("click", () => { nexus("forget", { url: url }); box.remove(); if (!$("pages").children.length) { $("pagesBox").hidden = true; havePages = false; updateNone(); } });
+    site.append(x);
+  }
+  const h = el("h3"); const a = el("a", "", title || host); a.href = u.href; h.append(a);
+  box.append(site, h);
+  if (text) box.append(el("p", "", text));
+  if (meta) box.append(el("div", "meta", meta));
+  return box;
+}
+
+// ---- Wikipedia's panel
+window.nexusWiki = function (card, q) {
+  if (q !== Q) return;
+  const box = $("wikiBox"); box.replaceChildren();
+  if (!card || !card.title) { box.hidden = true; return; }
+  const c = el("div", "card wiki fade");
+  if (card.image && /^https:\/\/upload\.wikimedia\.org\//.test(card.image)) { const i = el("img"); i.src = card.image; i.alt = card.title; c.append(i); }
+  const inn = el("div", "in");
+  inn.append(el("h3", "", card.title), el("div", "src", "Wikipedia"), el("p", "", card.extract));
+  if (webUrl(card.url)) { const a = el("a", "more", "Leer en Wikipedia →"); a.href = card.url; inn.append(a); }
+  c.append(inn); box.append(c); box.hidden = false;
+};
+
+// ---- NEXUS AI: the web results and the short answer with its sources
+const AI_ICON = '<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l1.9 6.1L20 10l-6.1 1.9L12 18l-1.9-6.1L4 10l6.1-1.9z"/><path d="M19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8z" opacity=".7"/></svg>';
+function aiHead(text) { const w = el("div", "who"); w.innerHTML = AI_ICON; w.append(el("span", "", text)); return w; }
+// ---- the results themselves (the person's search service, or Wikipedia) and the calculator: on screen at once
+let fullResults = false;
+window.nexusResults = function (d, q) {
+  if (q !== Q || !d) return;
+  const ib = $("instantBox"); ib.replaceChildren();
+  if (d.instant) { ib.append(el("div", "expr", d.instant.expr + " ="), el("div", "val", d.instant.shown)); ib.hidden = false; } else ib.hidden = true;
+  fullResults = !!d.full;
+  const results = d.results || [];
+  if (results.length) {
+    const web = $("web"); web.replaceChildren();
+    results.slice(0, 12).forEach((r) => web.append(result(r.url, r.title, r.desc, ageEs(r.age), false, false)));
+    haveWeb = true; $("webBox").hidden = false;
+    $("webN").textContent = "· " + results.length + " resultados" + (d.source ? " · " + d.source : "");
+    $("nWeb").textContent = results.length;
+  }
+  // without a search service the full list still comes from NEXUS AI (slow): say how to make it instant
+  const kb = $("keyBox"); kb.replaceChildren();
+  if (!d.full && !d.off) {
+    const t = el("div"); t.append(el("b", "", d.error ? "El servicio de búsqueda no ha respondido" : "Resultados al instante, gratis"),
+      document.createTextNode(d.error ? "Revisa la clave en Ajustes → Buscador. Mientras, busca NEXUS AI, que tarda unos segundos."
+        : "Ahora cada búsqueda la hace NEXUS AI y tarda unos segundos. Con una clave gratuita de un servicio de búsqueda, los resultados salen en menos de un segundo."));
+    const b = el("button", "cta", "Abrir Ajustes → Buscador"); b.addEventListener("click", () => nexus("settings", { page: "buscador" }));
+    kb.append(t, b); kb.hidden = false;
+  } else kb.hidden = true;
+  updateNone();
+};
+window.nexusAnswer = function (d, q) { window.nexusWeb(d && d.error ? { error: d.error } : { answer: (d && d.answer) || [], results: [], usd: d && d.usd, cached: d && d.cached, fromResults: true }, q); };
+window.nexusWebState = function (state, q) {
+  if (q !== Q) return;
+  webState = state; const box = $("aiBox"); box.replaceChildren();
+  if (state === "answering") {
+    box.append(aiHead("NEXUS AI está resumiendo los resultados…"));
+    for (const w of [94, 70]) { const s = el("div", "shimmer"); s.style.width = w + "%"; box.append(s); }
+    box.hidden = false;
+  } else if (state === "manual-answer") {
+    box.append(aiHead("NEXUS AI"));
+    const b = el("button", "cta"); b.append(el("span", "", "Resumir estos resultados"), el("small", "", "menos de 0,01 $"));
+    b.addEventListener("click", () => nexus("answer", { q: Q }));
+    box.append(b); box.hidden = false;
+  } else if (state === "loading") {
+    box.append(aiHead("NEXUS AI está buscando en la web…"));
+    for (const w of [96, 88, 62]) { const s = el("div", "shimmer"); s.style.width = w + "%"; box.append(s); }
+    box.hidden = false;
+  } else if (state === "manual") {
+    box.append(aiHead("NEXUS AI"));
+    const b = el("button", "cta"); b.append(el("span", "", "Buscar en la web y resumir"), el("small", "", "entre 0,01 y 0,03 $"));
+    b.addEventListener("click", () => nexus("web", { q: Q }));
+    box.append(b); box.hidden = false;
+  } else { box.hidden = true; }
+  updateNone();
+};
+const ERRORS = {
+  not_configured: "Para buscar en la web, NEXUS AI necesita tu clave de Claude.",
+  offline: "No hay conexión a Internet ahora mismo.", auth: "La clave de Claude no es válida.",
+  rate_limit: "Claude está saturado. Prueba otra vez en unos segundos.", too_many_requests: "Demasiadas búsquedas seguidas. Espera unos segundos.",
+  refusal: "NEXUS AI no ha querido responder a esta búsqueda.", off: "La búsqueda en la web está desactivada.",
+};
+window.nexusWeb = function (d, q) {
+  if (q !== Q) return;
+  const box = $("aiBox"); box.replaceChildren();
+  const err = d && d.error;
+  const parts = (d && d.answer) || [], results = (d && d.results) || [];
+  if (err && !parts.length && !results.length) {
+    box.append(aiHead("NEXUS AI"), el("p", "", ERRORS[err] || "No se ha podido buscar en la web. Inténtalo otra vez."));
+    if (err === "not_configured" || err === "auth") { const b = el("button", "cta", "Abrir Ajustes → NEXUS AI"); b.addEventListener("click", () => nexus("settings", { page: "ai" })); box.append(b); }
+    else if (err !== "off") { const b = el("button", "cta", "Reintentar"); b.addEventListener("click", () => nexus(fullResults ? "answer" : "web", { q: Q, retry: true })); box.append(b); }
+    box.hidden = false; webState = "error"; updateNone(); return;
+  }
+  // the answer, each sentence followed by the numbers of the sources it comes from (citations must be shown)
+  const order = [];
+  if (parts.length) {
+    box.append(aiHead("Respuesta de NEXUS AI"));
+    const p = el("p");
+    // the websites the answer names ("komgo2go.com") link to that result
+    const hosts = new Map();
+    for (const r of results) { const h = hostOf(r.url).replace(/^www\./, "").toLowerCase(); if (h && !hosts.has(h) && webUrl(r.url)) hosts.set(h, r.url); }
+    const linked = (text) => {
+      const re = /\b(?:www\.)?((?:[a-z0-9-]+\.)+[a-z]{2,})\b/gi; let last = 0, m;
+      while ((m = re.exec(text))) {
+        const u = hosts.get(m[1].toLowerCase()); if (!u) continue;
+        p.append(document.createTextNode(text.slice(last, m.index)));
+        const a = el("a", "site-link", m[0]); a.href = u; p.append(a); last = m.index + m[0].length;
+      }
+      p.append(document.createTextNode(text.slice(last)));
+    };
+    for (const part of parts) {
+      linked(part.text);
+      const nums = [];
+      for (const c of part.cites || []) { if (!webUrl(c.url)) continue; let i = order.findIndex((o) => o.url === c.url); if (i < 0) { order.push(c); i = order.length - 1; } if (!nums.includes(i)) nums.push(i); }
+      if (nums.length) { const s = el("sup"); for (const i of nums) { const a = el("a", "", String(i + 1)); a.href = order[i].url; a.title = order[i].title; s.append(a); } p.append(s); }
+    }
+    box.append(p);
+    if (order.length) {
+      const src = el("div", "sources");
+      order.forEach((c, i) => { const a = el("a"); a.href = c.url; a.title = c.title; a.append(el("span", "num", String(i + 1)), el("span", "", hostOf(c.url))); src.append(a); });
+      box.append(src);
+    }
+    box.append(el("div", "note", "Generado por Claude a partir de " + (order.length || results.length) + " fuentes de la web" +
+      (d.cached ? " · guardado, sin coste" : d.usd ? " · ≈ " + Number(d.usd).toFixed(3).replace(".", ",") + " $" : "") + ". Puede equivocarse: comprueba las fuentes."));
+    box.hidden = false;
+  } else { box.hidden = true; }
+  // the results
+  if (d.fromResults || (fullResults && !results.length)) { webState = "done"; updateNone(); return; }   // the list on screen stays
+  const web = $("web"); web.replaceChildren();
+  // each result has its own line written by NEXUS AI (desc); if not, the sentence it quoted from that page.
+  // The first one is the one NEXUS AI ranked first (official sites go first).
+  results.slice(0, 12).forEach((r, i) => web.append(result(r.url, r.title, r.desc || (r.quote ? "«" + r.quote + "»" : ""), ageEs(r.age), false, i === 0 && !!r.desc)));
+  haveWeb = web.children.length > 0;
+  $("webBox").hidden = !haveWeb;
+  $("webN").textContent = haveWeb ? "· " + results.length + " resultados" : "";
+  $("nWeb").textContent = results.length || "";
+  webState = "done"; updateNone();
+};
+
+function updateNone() {
+  const busy = webState === "loading" || webState === "manual" || webState === "error" || webState === "answering" || webState === "manual-answer";
+  const nothing = tab === "local" ? !haveLocal && !havePages : tab === "web" ? !haveWeb && !busy : !haveLocal && !havePages && !haveWeb && !busy;
+  const box = $("noneBox");
+  box.hidden = !(Q && nothing && (webState === "done" || webState === "off" || tab === "local"));
+  box.textContent = tab === "local" ? "Nada en tu equipo con esas palabras." : "Sin resultados para «" + Q + "».";
+}
+
+// ---- settings
+$("segWeb").addEventListener("click", (e) => { const b = e.target.closest("button"); if (b) { for (const x of $("segWeb").children) x.classList.toggle("on", x === b); nexus("pref", { key: "searchWeb", value: b.dataset.v }); } });
+$("segMem").addEventListener("click", (e) => { const b = e.target.closest("button"); if (b) { for (const x of $("segMem").children) x.classList.toggle("on", x === b); nexus("pref", { key: "searchMemory", value: b.dataset.v === "true" }); } });
+$("wipe").addEventListener("click", () => { nexus("clear", {}); $("wipe").textContent = "Borrado"; $("pages").replaceChildren(); $("pagesBox").hidden = true; havePages = false; updateNone(); });
+if (!Q) { $("q").focus(); }
+</script>
+</body>
+</html>

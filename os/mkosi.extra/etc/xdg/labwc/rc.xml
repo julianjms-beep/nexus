@@ -1,0 +1,59 @@
+<?xml version="1.0"?>
+<!-- NEXUS OS window manager settings (labwc). Users can override in ~/.config/labwc/rc.xml -->
+<labwc_config>
+  <core>
+    <decoration>server</decoration>
+    <gap>8</gap>
+    <adaptiveSync>no</adaptiveSync>
+  </core>
+  <placement><policy>cascade</policy></placement>
+  <theme>
+    <name>NEXUS</name>
+    <cornerRadius>10</cornerRadius>
+    <!-- no window-menu icon on the left (Qt apps without a desktop file get a generic one): just the title and the buttons -->
+    <titlebar><layout>:iconify,max,close</layout><showTitle>yes</showTitle></titlebar>
+    <dropShadows>yes</dropShadows>
+    <font place="ActiveWindow"><name>Inter</name><size>10</size><weight>bold</weight></font>
+    <font place="InactiveWindow"><name>Inter</name><size>10</size><weight>bold</weight></font>
+    <font place="MenuItem"><name>Inter</name><size>10</size></font>
+    <font place="OnScreenDisplay"><name>Inter</name><size>12</size></font>
+  </theme>
+  <!-- Alt+Tab: only the window names, in the NEXUS style (labwc 0.8 has no app icons in the switcher, and the
+       default fields read like "[xdg-shell] qml Archivos"); the previewed window gets an accent outline (themerc) -->
+  <windowSwitcher show="yes" preview="yes" outlines="yes" allWorkspaces="no">
+    <fields>
+      <field content="title" width="100%" />
+    </fields>
+  </windowSwitcher>
+  <keyboard>
+    <default />
+    <keybind key="W-space"><action name="Execute" command="nexusctl ui ai" /></keybind>
+    <keybind key="A-space"><action name="Execute" command="nexusctl ui ai" /></keybind>
+    <!-- Apple keyboards: Option is AltGr there (nexus-session), so Option+Space, Option+Tab and Cmd+Tab are bound too -->
+    <keybind key="M-space"><action name="Execute" command="nexusctl ui ai" /></keybind>
+    <keybind key="M-Tab"><action name="NextWindow" /></keybind>
+    <keybind key="M-S-Tab"><action name="PreviousWindow" /></keybind>
+    <keybind key="W-Tab"><action name="NextWindow" /></keybind>
+    <keybind key="W-S-Tab"><action name="PreviousWindow" /></keybind>
+    <keybind key="W-Return"><action name="Execute" command="foot" /></keybind>
+    <keybind key="W-e"><action name="Execute" command="nexusctl open files" /></keybind>
+    <keybind key="W-l"><action name="Execute" command="nexus-lock" /></keybind>
+    <keybind key="W-q"><action name="Close" /></keybind>
+    <!-- ⌘C ⌘V ⌘X ⌘A ⌘Z ⌘⇧Z like on a Mac (usr/bin/nexus-editkey sends the Ctrl shortcut; Ctrl+Shift in the terminal) -->
+    <keybind key="W-c"><action name="Execute" command="nexus-editkey c" /></keybind>
+    <keybind key="W-v"><action name="Execute" command="nexus-editkey v" /></keybind>
+    <keybind key="W-x"><action name="Execute" command="nexus-editkey x" /></keybind>
+    <keybind key="W-a"><action name="Execute" command="nexus-editkey a" /></keybind>
+    <keybind key="W-z"><action name="Execute" command="nexus-editkey z" /></keybind>
+    <keybind key="W-S-z"><action name="Execute" command="nexus-editkey Z" /></keybind>
+    <keybind key="W-Up"><action name="ToggleMaximize" /></keybind>
+    <keybind key="W-Left"><action name="SnapToEdge" direction="left" /></keybind>
+    <keybind key="W-Right"><action name="SnapToEdge" direction="right" /></keybind>
+    <keybind key="Print"><action name="Execute" command="sh -c 'mkdir -p ~/Imágenes &amp;&amp; grim ~/Imágenes/captura-$(date +%Y%m%d-%H%M%S).png'" /></keybind>
+  </keyboard>
+  <mouse><default /></mouse>
+  <libinput><device category="default"><naturalScroll>no</naturalScroll><tap>yes</tap></device></libinput>
+  <windowRules>
+    <windowRule identifier="foot" serverDecoration="yes" />
+  </windowRules>
+</labwc_config>

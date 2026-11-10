@@ -1,0 +1,14 @@
+{
+  "name": "nexus-agent",
+  "version": "0.1.0",
+  "description": "Run an AI coding agent (Claude Code, or any program) isolated in one project: no keys, no home folder, and your approval before anything critical.",
+  "type": "module",
+  "bin": { "nexus-agent": "dist/nexus-agent.mjs" },
+  "files": ["dist/nexus-agent.mjs", "README.md"],
+  "engines": { "node": ">=20" },
+  "os": ["darwin", "linux"],
+  "private": true,
+  "scripts": {
+    "build": "esbuild nexus-agent.ts --bundle --platform=node --format=esm --target=node20 --outfile=dist/nexus-agent.mjs"
+  }
+}

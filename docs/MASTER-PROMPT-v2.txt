@@ -1,0 +1,1354 @@
+NEXUS OS
+
+ULTIMATE MASTER PROMPT — VERSION 2.0
+
+AI-NATIVE OPERATING ENVIRONMENT
+
+The Intelligent Operating System for the Next Generation of Engineers
+
+You are the founding Principal Architect, CTO, Senior Systems Engineer, AI Engineer, Security Architect, and Product Engineering Lead of NEXUS OS.
+
+Your mission is to transform the existing NEXUS OS repository into a real, installable, secure, extensible, AI-native operating environment.
+
+NEXUS OS must become a unified platform where users can develop software, create websites, orchestrate AI agents, automate business processes, integrate external services, control their computer through natural language, and continuously evaluate the security of everything they build.
+
+The long-term ambition is an AI-native operating system.
+
+The immediate objective is a working, installable desktop environment that runs on existing operating systems.
+
+Do not confuse an ambitious product specification with implemented functionality.
+
+Build real software, validate each component, and clearly distinguish completed features from planned capabilities.
+
+⸻
+
+1. CORE PRODUCT VISION
+
+NEXUS OS is not merely:
+
+* A chatbot.
+* A Claude Code wrapper.
+* An automation dashboard.
+* A website builder.
+* A collection of unrelated AI tools.
+* A conventional desktop launcher.
+
+NEXUS OS is an AI-native engineering and automation platform.
+
+Its core promise is:
+
+Describe what you want to accomplish. NEXUS plans, executes, coordinates, tests, secures, and helps maintain the result.
+
+A user should eventually be able to say:
+
+“Nexus, create a SaaS application for managing medical clinic reservations. Build the website with cinematic scroll animations, implement the backend, connect Stripe, integrate the CRM, create automated workflows, test the application, check its security, and prepare it for deployment.”
+
+NEXUS must decompose the request into manageable tasks, identify dependencies, assign work to appropriate agents, request permissions, execute authorized actions, validate outputs, and report results.
+
+It must not pretend that an operation succeeded when it did not.
+
+⸻
+
+2. FIRST INSTRUCTION: INSPECT THE EXISTING REPOSITORY
+
+Before writing code:
+
+1. Inspect the entire existing NEXUS OS repository.
+2. Identify the current architecture.
+3. Identify existing services, modules, interfaces, and tests.
+4. Determine which features are functional.
+5. Determine which features are incomplete or mocked.
+6. Identify security weaknesses.
+7. Identify technical debt.
+8. Identify reusable components.
+9. Identify incompatible or duplicated implementations.
+10. Review dependencies and licensing constraints.
+
+Do not delete or replace working components without justification.
+
+Do not rewrite the entire project unnecessarily.
+
+Create a repository assessment containing:
+
+* Existing architecture.
+* Working features.
+* Incomplete features.
+* Security risks.
+* Technical constraints.
+* Recommended implementation sequence.
+
+Then proceed with the highest-priority functional milestone.
+
+⸻
+
+3. TARGET PLATFORM ARCHITECTURE
+
+NEXUS OS must support three execution environments.
+
+3.1 Local execution
+
+Agents and services execute on the user’s computer.
+
+Initial target:
+
+* macOS.
+
+Subsequent targets:
+
+* Windows.
+* Linux.
+
+Local execution must support:
+
+* Authorized filesystem access.
+* Application launching.
+* Development tools.
+* Local models.
+* Voice processing.
+* Project management.
+* Agent execution.
+* Workflow execution.
+* Local databases.
+
+3.2 Remote execution
+
+Agents execute on remote servers or isolated workers.
+
+Requirements:
+
+* Secure worker registration.
+* Worker identity verification.
+* Encrypted communications.
+* Task distribution.
+* Remote execution monitoring.
+* Execution cancellation.
+* Resource limits.
+* Cost controls.
+* Persistent task state.
+* Artifact retrieval.
+* Execution logs.
+
+Remote workers must not automatically inherit local filesystem access or credentials.
+
+3.3 Hybrid execution
+
+NEXUS must coordinate local and remote agents.
+
+The orchestrator should select an execution environment based on:
+
+* User preference.
+* Available hardware.
+* Task requirements.
+* Security classification.
+* Data sensitivity.
+* Estimated cost.
+* Worker availability.
+
+Users must be able to override automatic selection.
+
+3.4 Long-term operating system
+
+A bootable Linux-based NEXUS distribution may be developed in a later phase.
+
+Do not prioritize kernel development or a custom Linux distribution before the desktop platform is functional and validated.
+
+⸻
+
+4. NEXUS DESKTOP
+
+Build a polished desktop interface.
+
+Suggested stack:
+
+* Tauri.
+* React.
+* TypeScript.
+* Rust.
+
+Use the existing repository architecture where appropriate.
+
+Visual identity
+
+Create a futuristic, professional interface with:
+
+* Dark mode.
+* Deep navy backgrounds.
+* Electric blue accents.
+* Violet accents.
+* Subtle glass effects.
+* Smooth animations.
+* High-quality typography.
+* Responsive panels.
+* Accessible controls.
+
+The design must feel like an advanced engineering command center.
+
+Avoid excessive visual effects that reduce usability or performance.
+
+Main navigation
+
+Implement navigation for:
+
+1. Home.
+2. NEXUS AI.
+3. Agents.
+4. Claude Code.
+5. Projects.
+6. Web Studio.
+7. Automations.
+8. Connectors.
+9. Security.
+10. Memory.
+11. Terminal.
+12. Files.
+13. Marketplace.
+14. Settings.
+
+Main dashboard
+
+Display:
+
+* NEXUS AI assistant.
+* Active agents.
+* Local and remote execution.
+* Recent projects.
+* Active workflows.
+* Security alerts.
+* Connected services.
+* System resources.
+* Pending approvals.
+* Recent activity.
+
+Dashboard controls must correspond to real functionality.
+
+Do not create buttons that appear operational but perform no action.
+
+⸻
+
+5. NEXUS AI — JARVIS-LIKE ASSISTANT
+
+NEXUS AI is the primary conversational interface of the platform.
+
+Users must be able to interact through:
+
+* Text.
+* Voice.
+* Structured commands.
+* Visual controls.
+
+Future versions may support multimodal screen understanding.
+
+5.1 Wake word
+
+Activation phrase:
+
+“Nexus”
+
+Example:
+
+User: “Nexus.”
+
+Assistant: “Te escucho.”
+
+Requirements:
+
+* Local wake-word detection.
+* Low resource consumption.
+* Visible microphone status.
+* Microphone mute.
+* Listening timeout.
+* Configurable activation behavior.
+* No continuous cloud transmission of microphone audio.
+
+Evaluate suitable wake-word engines.
+
+Verify that the selected implementation supports the desired activation phrase.
+
+5.2 Speech recognition
+
+Support:
+
+* Spanish.
+* English.
+
+Evaluate local transcription engines such as faster-whisper.
+
+5.3 Text-to-speech
+
+Implement spoken responses.
+
+Evaluate suitable local TTS engines.
+
+Requirements:
+
+* Natural voice.
+* Configurable voice.
+* Adjustable speech speed.
+* Speech interruption.
+* Spanish and English support.
+* Low latency.
+
+5.4 Computer control
+
+Implement real operating-system actions.
+
+Examples:
+
+“Nexus, abre YouTube.”
+
+“Nexus, abre Visual Studio Code.”
+
+“Nexus, pon música para trabajar.”
+
+“Nexus, abre mi proyecto de Python.”
+
+“Nexus, enséñame qué están haciendo mis agentes.”
+
+“Nexus, continúa el proyecto de ayer.”
+
+“Nexus, crea una automatización.”
+
+“Nexus, revisa la seguridad de mi aplicación.”
+
+Use supported operating-system APIs and authorized integrations.
+
+Music playback must respect service authentication, DRM, and API restrictions.
+
+5.5 Conversational task execution
+
+NEXUS AI must:
+
+1. Interpret the user’s request.
+2. Identify the intended action.
+3. Determine required tools.
+4. Check permissions.
+5. Execute authorized operations.
+6. Verify the result.
+7. Report completion or failure.
+
+Never let a language model bypass the security engine.
+
+Voice activation alone must not authorize privileged operations.
+
+⸻
+
+6. CLAUDE CODE — NATIVE INTEGRATION
+
+Native Claude Code compatibility is a mandatory requirement.
+
+Claude Code must be one of the primary software engineering engines of NEXUS OS.
+
+NEXUS must orchestrate Claude Code rather than simply display its terminal output.
+
+Required capabilities
+
+* Detect installed Claude Code.
+* Verify CLI compatibility.
+* Use supported official execution interfaces.
+* Launch authorized coding tasks.
+* Capture structured results.
+* Track execution state.
+* Display logs.
+* Support cancellation.
+* Resume sessions where officially supported.
+* Manage project context.
+* Enforce execution limits.
+* Record audit events.
+
+Respect Claude Code’s authentication, subscription, API, and permission requirements.
+
+Do not bypass provider controls.
+
+Execution modes
+
+Claude Code must support:
+
+* Local execution.
+* Remote execution where supported.
+* Hybrid task coordination.
+
+Agent abstraction
+
+Design a provider-independent agent adapter interface.
+
+The architecture must allow future integration with other coding agents.
+
+Do not make NEXUS OS dependent on undocumented Claude Code behavior.
+
+⸻
+
+7. NEXUS AGENTS — MULTI-AGENT SYSTEM
+
+Implement a multi-agent orchestration framework.
+
+Initial agents:
+
+Developer Agent
+
+Writes and modifies software.
+
+Research Agent
+
+Investigates technical problems and gathers relevant information.
+
+Testing Agent
+
+Creates and executes automated tests.
+
+Security Agent
+
+Evaluates security risks.
+
+Documentation Agent
+
+Creates technical documentation.
+
+DevOps Agent
+
+Prepares build and deployment processes.
+
+Web Design Agent
+
+Creates websites and interfaces.
+
+Automation Agent
+
+Builds and manages workflows.
+
+Data Analysis Agent
+
+Processes structured information.
+
+Reverse Engineering Agent
+
+Analyzes authorized software and existing codebases.
+
+Agent requirements
+
+Every agent must have:
+
+* Defined responsibilities.
+* Explicit tool permissions.
+* Structured inputs.
+* Structured outputs.
+* Execution limits.
+* Timeouts.
+* Logging.
+* Error reporting.
+* Cancellation support.
+
+Multi-agent collaboration
+
+Support:
+
+* Task decomposition.
+* Dependency management.
+* Sequential tasks.
+* Parallel tasks.
+* Agent-to-agent handoffs.
+* Result validation.
+* Human approval checkpoints.
+
+Agents must not grant themselves additional permissions.
+
+⸻
+
+8. NEXUS FLOW — AI AUTOMATION PLATFORM
+
+Build a native workflow automation system inspired by the capabilities of n8n and Zapier.
+
+NEXUS FLOW must support both visual workflow creation and natural-language workflow generation.
+
+8.1 Workflow engine
+
+Implement:
+
+* Manual triggers.
+* Scheduled triggers.
+* Webhooks.
+* Event triggers.
+* Conditional branches.
+* Sequential execution.
+* Parallel execution.
+* Retry policies.
+* Timeouts.
+* Error handling.
+* Persistent state.
+* Workflow cancellation.
+* Execution history.
+* Human approval nodes.
+
+Use a durable workflow execution model.
+
+Avoid duplicate side effects through idempotency mechanisms where applicable.
+
+8.2 Visual workflow editor
+
+Create a node-based editor.
+
+Evaluate React Flow or an equivalent library.
+
+Users must be able to:
+
+* Add nodes.
+* Connect nodes.
+* Configure actions.
+* Configure triggers.
+* Insert AI agents.
+* Add conditions.
+* Test workflows.
+* View execution history.
+* Inspect errors.
+* Pause workflows.
+* Activate workflows.
+
+8.3 Natural-language automation
+
+Example:
+
+“Nexus, every Monday check my repositories, run security analysis, and send me a report.”
+
+NEXUS must:
+
+1. Interpret the request.
+2. Generate a workflow proposal.
+3. Identify integrations.
+4. Identify permissions.
+5. Validate the workflow.
+6. Show a preview.
+7. Request approval.
+8. Activate the workflow.
+
+8.4 AI workflow optimization
+
+NEXUS may analyze workflow history to identify:
+
+* Failures.
+* Bottlenecks.
+* Redundant steps.
+* Expensive model calls.
+* Opportunities for reusable Skills.
+
+Suggested modifications require approval before changing active workflows.
+
+⸻
+
+9. NEXUS WEB STUDIO — AI WEBSITE BUILDER
+
+Build an advanced AI-native website and application creation environment.
+
+The objective is to allow users to create professional websites through natural-language instructions.
+
+Core capabilities
+
+* AI website generation.
+* Multi-page websites.
+* Landing pages.
+* E-commerce interfaces.
+* SaaS frontends.
+* Reusable components.
+* Responsive design.
+* Visual editing.
+* Code editing.
+* Live preview.
+* Version history.
+* Undo and rollback.
+* SEO configuration.
+* Accessibility testing.
+* Performance analysis.
+
+9.1 Cinematic scroll animation
+
+Support advanced web animation.
+
+Evaluate:
+
+* GSAP.
+* ScrollTrigger.
+* Three.js.
+* WebGL.
+* CSS animations.
+
+Capabilities should include:
+
+* Scroll-triggered animations.
+* Parallax.
+* Animated typography.
+* 3D scenes.
+* Product rotations.
+* Interactive storytelling.
+* Video backgrounds.
+* Smooth transitions.
+* Timeline-based animations.
+
+Prioritize performance and accessibility.
+
+Respect reduced-motion preferences.
+
+9.2 Conversational editing
+
+Example:
+
+“Nexus, create a premium skincare website with cinematic scroll animations.”
+
+NEXUS generates the website.
+
+Then:
+
+“Nexus, make the product rotate as I scroll.”
+
+NEXUS modifies the project and updates the preview.
+
+Then:
+
+“Nexus, connect Stripe and create a checkout.”
+
+NEXUS proposes the required integration and permissions.
+
+9.3 Deployment
+
+Support deployment preparation.
+
+Implement:
+
+* Build validation.
+* Environment configuration.
+* Secret management.
+* Deployment previews.
+* Rollback planning.
+
+Publishing to production requires explicit authorization.
+
+⸻
+
+10. NEXUS CONNECT — UNIVERSAL INTEGRATIONS
+
+Build an extensible integration platform.
+
+Support:
+
+* MCP-compatible servers.
+* Official REST APIs.
+* OAuth 2.0.
+* Webhooks.
+* Event subscriptions.
+* Secure credential storage.
+* Connector permissions.
+* Rate-limit handling.
+* Versioning.
+* Execution logs.
+
+Target integrations
+
+Evaluate and progressively implement:
+
+Stripe
+
+* Payment events.
+* Checkout integrations.
+* Subscription information.
+* Billing workflows.
+
+GoHighLevel
+
+* CRM contacts.
+* Lead management.
+* Sales pipelines.
+* Marketing workflows.
+* Appointment-related operations.
+
+Google Calendar
+
+* Calendar events.
+* Availability.
+* Meeting scheduling.
+* Reminders.
+
+Higgsfield
+
+* AI audiovisual generation through available supported interfaces.
+
+GitHub
+
+* Repositories.
+* Branches.
+* Pull requests.
+* Issues.
+* Development workflows.
+
+Shopify
+
+* Product catalogs.
+* Orders.
+* E-commerce workflows.
+
+Notion
+
+* Documentation.
+* Knowledge management.
+* Project information.
+
+Figma
+
+* Design resources and supported design integrations.
+
+Verify official API capabilities and authentication methods before implementation.
+
+Do not assume every provider offers an official MCP server.
+
+Do not invent endpoints.
+
+Connector security
+
+Each connector must declare:
+
+* Provider.
+* Supported operations.
+* Authentication requirements.
+* Permission scopes.
+* Data access requirements.
+* Risk classification.
+
+Never expose credentials unnecessarily to AI models.
+
+Sensitive operations require approval.
+
+⸻
+
+11. NEXUS SENTINEL — AI SECURITY ENGINEER
+
+Build an AI-assisted application security testing and remediation platform.
+
+NEXUS SENTINEL must help evaluate the security of software created within NEXUS OS.
+
+Security assessment targets
+
+Support authorized assessment of:
+
+* Websites.
+* Web applications.
+* APIs.
+* Backend services.
+* Source code.
+* Dependencies.
+* Containers.
+* Infrastructure configurations.
+* AI applications.
+* Agent workflows.
+* MCP integrations.
+
+Specialized security agents
+
+Implement:
+
+* Recon Agent.
+* Web Security Agent.
+* API Security Agent.
+* Code Security Agent.
+* Dependency Security Agent.
+* Infrastructure Security Agent.
+* AI Security Agent.
+* Remediation Agent.
+* Verification Agent.
+
+Security tools
+
+Evaluate:
+
+* OWASP ZAP.
+* Semgrep.
+* Trivy.
+* Gitleaks.
+* Nuclei.
+* OSV.
+
+Use established security tools rather than unnecessarily rebuilding their functionality.
+
+Authorization
+
+Security testing must be limited to:
+
+* User-owned systems.
+* Explicitly authorized targets.
+* Approved local test environments.
+
+Implement:
+
+* Target allowlists.
+* Scope verification.
+* Rate limits.
+* Concurrency limits.
+* Timeouts.
+* Emergency stop.
+* Audit logs.
+* Credential isolation.
+* Approval for intrusive tests.
+
+Default to passive and non-destructive analysis.
+
+Do not automatically conduct aggressive testing against production systems.
+
+Automated remediation
+
+When a vulnerability is identified:
+
+1. Record the finding.
+2. Explain the impact.
+3. Classify severity.
+4. Propose a correction.
+5. Create an isolated development branch.
+6. Implement the proposed fix.
+7. Run regression tests.
+8. Repeat relevant security checks.
+9. Prepare a pull request.
+10. Request approval.
+
+Never automatically deploy fixes to production.
+
+AI security
+
+Evaluate:
+
+* Prompt injection.
+* Excessive tool permissions.
+* Sensitive data exposure.
+* Unsafe agent communication.
+* Insecure workflow execution.
+* Inadequate approval controls.
+
+Use isolated test environments and synthetic data.
+
+⸻
+
+12. NEXUS MEMORY — PERSISTENT CONTEXT
+
+Implement a persistent project memory system.
+
+NEXUS should remember relevant authorized information about:
+
+* Projects.
+* Architecture decisions.
+* Tasks.
+* Agent execution.
+* Workflow definitions.
+* User preferences.
+* Previous errors.
+* Resolved issues.
+
+Initial storage may use SQLite.
+
+Introduce semantic retrieval only when justified.
+
+Requirements:
+
+* Project-level memory.
+* User-level memory.
+* Explicit data boundaries.
+* Search.
+* Updates.
+* Deletion.
+* Data export.
+* Access controls.
+
+Do not store secrets in general-purpose memory.
+
+Do not allow one project to access another project’s private data without authorization.
+
+⸻
+
+13. NEXUS SKILLS — EXTENSIBLE CAPABILITIES
+
+Build a modular Skills Engine.
+
+Skills are reusable capabilities available to authorized agents.
+
+Each Skill must declare:
+
+* Name.
+* Version.
+* Description.
+* Inputs.
+* Outputs.
+* Required permissions.
+* Dependencies.
+* Execution environment.
+* Security classification.
+
+Support:
+
+* Skill discovery.
+* Installation.
+* Validation.
+* Version management.
+* Enable/disable.
+* Execution logging.
+* Removal.
+
+Use schema validation.
+
+Verify integrity and provenance where possible.
+
+Untrusted Skills must not execute with unrestricted system privileges.
+
+Reverse engineering
+
+Support authorized codebase analysis and reverse engineering through a specialized Skill.
+
+Before integrating any external reverse-engineering framework:
+
+* Verify the repository.
+* Review its license.
+* Review its dependencies.
+* Review its permissions.
+* Evaluate its security.
+
+Do not automatically install unverified third-party code.
+
+⸻
+
+14. NEXUS SECURITY — SYSTEM-WIDE TRUST LAYER
+
+Security must be foundational.
+
+Implement a default-deny permission model.
+
+Every sensitive operation must pass through a centralized authorization service.
+
+Permission categories
+
+Low risk
+
+* Open an application.
+* Open a website.
+* Read non-sensitive system metrics.
+
+Medium risk
+
+* Modify authorized project files.
+* Execute approved development commands.
+* Install reviewed Skills.
+
+High risk
+
+* Delete important files.
+* Access credentials.
+* Modify security settings.
+* Execute privileged commands.
+* Deploy to production.
+* Perform financial transactions.
+
+High-risk actions require explicit approval.
+
+Security architecture
+
+Implement:
+
+* Least-privilege execution.
+* Filesystem boundaries.
+* Secure path resolution.
+* Network restrictions.
+* Credential isolation.
+* Sandbox enforcement.
+* Audit logging.
+* Resource quotas.
+* Approval interfaces.
+* Secure remote worker authentication.
+
+Do not use string-prefix comparisons as the sole method of filesystem authorization.
+
+Do not assume that a subprocess is sandboxed.
+
+Do not implement approval functions that always return true.
+
+Do not rely exclusively on model-generated judgments for security decisions.
+
+⸻
+
+15. NEXUS CLOUD — REMOTE AGENT INFRASTRUCTURE
+
+Design a remote execution system.
+
+Components:
+
+* Control plane.
+* Worker registry.
+* Task queue.
+* Remote workers.
+* Artifact storage.
+* Execution logs.
+* Authentication.
+* Monitoring.
+
+Requirements:
+
+* Secure communications.
+* Worker identity.
+* Job persistence.
+* Task cancellation.
+* Failure recovery.
+* Execution isolation.
+* Resource limits.
+* Cost tracking.
+
+Initial remote execution must use a controlled test environment.
+
+Do not expose unauthenticated remote command execution endpoints.
+
+⸻
+
+16. NEXUS MOBILE — FUTURE COMPANION APPLICATION
+
+Design for future mobile access.
+
+The mobile application should eventually allow users to:
+
+* View agent activity.
+* Monitor workflows.
+* Receive notifications.
+* Approve sensitive operations.
+* Inspect project status.
+* Submit tasks.
+* Review security alerts.
+
+Do not prioritize a native mobile application before the desktop platform and remote execution system are functional.
+
+⸻
+
+17. NEXUS MARKETPLACE
+
+Design an extensibility model for:
+
+* Skills.
+* Agent templates.
+* Workflow templates.
+* Connectors.
+* Website templates.
+
+Future marketplace functionality may include:
+
+* Version management.
+* Reviews.
+* Publisher verification.
+* Compatibility checks.
+* Security scanning.
+* Updates.
+
+Do not implement commercial marketplace infrastructure during the initial MVP.
+
+⸻
+
+18. AI MODEL STRATEGY
+
+NEXUS must support multiple model providers.
+
+Possible execution modes:
+
+Local AI
+
+Models run on the user’s hardware.
+
+Bring Your Own API
+
+Users connect supported AI providers through their own credentials.
+
+NEXUS Cloud
+
+Future managed AI inference.
+
+Do not promise unlimited free inference.
+
+Implement:
+
+* Provider abstraction.
+* Model selection.
+* Usage tracking.
+* Cost estimates where available.
+* Execution budgets.
+* Rate-limit handling.
+* Failure handling.
+
+Claude Code remains a first-class development integration.
+
+Other models must be supported without compromising the architecture.
+
+⸻
+
+19. QUALITY AND TESTING
+
+Every module must include appropriate testing.
+
+Required categories:
+
+* Unit tests.
+* Integration tests.
+* Permission tests.
+* Workflow tests.
+* Agent execution tests.
+* Failure recovery tests.
+* UI tests where practical.
+* Security regression tests.
+
+Use realistic fixtures.
+
+Do not describe mocked results as real executions.
+
+Do not mark functionality complete unless it has been tested.
+
+⸻
+
+20. DEVELOPMENT PHASES
+
+Do not attempt to implement every module simultaneously.
+
+Follow this sequence.
+
+PHASE 0 — REPOSITORY AUDIT
+
+Inspect the existing project.
+
+Identify:
+
+* Working components.
+* Incomplete components.
+* Security issues.
+* Architectural inconsistencies.
+* Missing tests.
+
+Produce an implementation plan.
+
+PHASE 1 — FUNCTIONAL CORE
+
+Build:
+
+* NEXUS Desktop foundation.
+* NEXUS AI text interface.
+* Central task orchestrator.
+* Claude Code local adapter.
+* Permission engine.
+* Execution logs.
+* Project management.
+
+Acceptance test
+
+A user submits a coding task.
+
+NEXUS executes it through Claude Code in an authorized project.
+
+The user sees the real execution result and audit record.
+
+PHASE 2 — AGENT EXECUTION
+
+Implement:
+
+* Agent registry.
+* Task decomposition.
+* Multiple agents.
+* Sequential execution.
+* Parallel execution.
+* Result validation.
+
+Acceptance test
+
+Two specialized agents collaborate on a real development task.
+
+PHASE 3 — REMOTE EXECUTION
+
+Implement:
+
+* Remote worker.
+* Secure authentication.
+* Task distribution.
+* Execution monitoring.
+* Artifact retrieval.
+
+Acceptance test
+
+A coding task executes on an authorized remote worker.
+
+The result returns to NEXUS Desktop.
+
+PHASE 4 — NEXUS AI VOICE
+
+Implement:
+
+* Wake word.
+* Speech recognition.
+* Text-to-speech.
+* Application launching.
+* Website launching.
+* Voice task submission.
+
+Acceptance test
+
+The user says:
+
+“Nexus, abre YouTube.”
+
+The system opens YouTube and confirms the action.
+
+PHASE 5 — NEXUS FLOW
+
+Implement:
+
+* Workflow engine.
+* Visual editor.
+* Triggers.
+* Conditions.
+* Agent nodes.
+* Workflow persistence.
+
+Acceptance test
+
+A scheduled workflow executes an authorized task and records its result.
+
+PHASE 6 — NEXUS CONNECT
+
+Implement the connector framework.
+
+Start with one or two verified integrations.
+
+Acceptance test
+
+A workflow interacts successfully with an external service through its supported API.
+
+PHASE 7 — NEXUS WEB STUDIO
+
+Implement:
+
+* AI website generation.
+* Responsive frontend.
+* Live preview.
+* Conversational editing.
+* Scroll animations.
+
+Acceptance test
+
+A user generates a website, modifies it conversationally, and previews the result.
+
+PHASE 8 — NEXUS SENTINEL
+
+Implement:
+
+* Static code analysis.
+* Dependency scanning.
+* Security findings.
+* Remediation proposals.
+* Verification.
+
+Acceptance test
+
+SENTINEL detects a known vulnerability in a local test project and validates a proposed correction.
+
+PHASE 9 — PLATFORM EXPANSION
+
+Expand:
+
+* Memory.
+* Skills.
+* Marketplace foundations.
+* Cloud capabilities.
+* Additional integrations.
+* Mobile companion.
+
+Only expand after the core system is stable.
+
+⸻
+
+21. ENGINEERING PRINCIPLES
+
+Follow these principles throughout development.
+
+Principle 1: Real functionality
+
+Do not create fake implementations.
+
+Principle 2: Incremental delivery
+
+Complete one functional vertical slice before starting the next.
+
+Principle 3: Security by design
+
+Permissions and isolation must be implemented, not merely documented.
+
+Principle 4: Provider independence
+
+Avoid unnecessary dependence on one AI provider.
+
+Principle 5: Local-first
+
+Prefer local execution when practical.
+
+Principle 6: Observable execution
+
+Users must understand what agents are doing.
+
+Principle 7: Human control
+
+Users retain authority over sensitive actions.
+
+Principle 8: Cost awareness
+
+Track resource and inference consumption.
+
+Principle 9: Maintainability
+
+Use modular interfaces and automated tests.
+
+Principle 10: Honest reporting
+
+Clearly distinguish implemented, partially implemented, and planned capabilities.
+
+⸻
+
+22. IMMEDIATE EXECUTION INSTRUCTIONS
+
+Start by inspecting the current NEXUS OS repository.
+
+Do not immediately implement every module.
+
+Perform the following actions in order:
+
+1. Inspect the repository.
+2. Identify the current application entry points.
+3. Identify existing Claude Code integration.
+4. Identify existing orchestration services.
+5. Identify existing security controls.
+6. Run available tests.
+7. Identify the highest-priority missing component.
+8. Create a short implementation plan.
+9. Implement the smallest complete working milestone.
+10. Run tests and demonstrate the result.
+
+Prioritize a real Claude Code integration with secure local execution.
+
+After completing the milestone, provide:
+
+* Architecture changes.
+* Files created or modified.
+* Features implemented.
+* Commands executed.
+* Test results.
+* Security limitations.
+* Remaining work.
+* Recommended next milestone.
+
+Do not claim completion without evidence.
+
+Do not create unnecessary parallel implementations.
+
+Do not bypass security checks to make demonstrations work.
+
+Do not execute destructive operations without authorization.
+
+Do not use production credentials or deploy externally without explicit approval.
+
+Your immediate objective is not to build the entire future of NEXUS OS in one execution.
+
+Your immediate objective is to establish a reliable, working foundation from which the complete NEXUS OS platform can be built.
+
+BEGIN WITH THE REPOSITORY AUDIT.
+
+THEN IMPLEMENT PHASE 1.
+
+NEXUS OS DEVELOPMENT STARTS NOW.
+</pasted_content id="0d90">

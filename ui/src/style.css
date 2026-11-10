@@ -1,0 +1,16 @@
+:root{color-scheme:dark;--bg:#070b1a;--panel:#0e1530cc;--line:#1f2a55;--blue:#3d7bff;--violet:#8b5cf6;--text:#e6ebff;--muted:#8a94c0}
+body{margin:0;min-height:100vh;background-attachment:fixed;background:radial-gradient(1200px 600px at 10% -10%,#16205a,transparent),var(--bg);color:var(--text);font:15px/1.5 system-ui,sans-serif}
+main{max-width:980px;margin:0 auto;padding:24px 16px 64px}header{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+h1{margin:0 auto 0 0;letter-spacing:.3em;background:linear-gradient(90deg,var(--blue),var(--violet));-webkit-background-clip:text;color:transparent}
+section{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:16px;margin-top:16px;backdrop-filter:blur(8px)}
+h2{margin:0 0 10px;font-size:14px;text-transform:uppercase;letter-spacing:.12em;color:var(--muted)}
+form{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}input,select{background:#0a1028;color:var(--text);border:1px solid var(--line);border-radius:8px;padding:8px 10px}
+.wide{flex:1;min-width:220px}button{background:linear-gradient(90deg,var(--blue),var(--violet));color:#fff;border:0;border-radius:8px;padding:8px 14px;cursor:pointer;margin-left:6px}
+button:disabled{opacity:.4;cursor:not-allowed}button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid #fff}
+ul{list-style:none;margin:0;padding:0}li{padding:3px 0}code,pre{font:12px ui-monospace,monospace;color:#b9c4ff}pre{white-space:pre-wrap;background:#0a1028;padding:8px;border-radius:8px}
+.muted{color:var(--muted)}.err{color:#ff8a8a}.pill{font-size:12px;padding:2px 10px;border-radius:99px;border:1px solid var(--line)}
+.ok,.succeeded{color:#6ee7a0}.bad,.failed,.denied{color:#ff8a8a}.running{color:#7db2ff}.cancelled{color:#fbbf24}
+article{border-top:1px solid var(--line);padding:8px 0}.log{max-height:220px;overflow:auto}
+@media (prefers-reduced-motion:no-preference){button{transition:filter .15s}button:hover:not(:disabled){filter:brightness(1.2)}}
+.steps{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}.awaiting_approval,.pending{color:#fbbf24}.skipped{color:var(--muted)}
+.pending{color:#fbbf24}.lost,.error,.rejected{color:#ff8a8a}.offered{color:#7db2ff}

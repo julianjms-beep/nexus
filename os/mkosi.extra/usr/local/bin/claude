@@ -1,0 +1,4 @@
+#!/bin/sh
+# Claude Code as shipped with NEXUS OS. It is updated with NEXUS (Ajustes → Actualizaciones), never by itself.
+export DISABLE_AUTOUPDATER=1
+exec /usr/lib/nexus/claude-code/claude "$@"

@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- NEXUS OS menus for labwc. Users can override in ~/.config/labwc/menu.xml -->
+<openbox_menu>
+  <!-- right click on a window's title bar: the everyday actions, with snapping to half the screen (like Windows);
+       labwc's "shade" and "decorations" are left out on purpose: they only confuse -->
+  <menu id="client-menu">
+    <item label="Minimizar"><action name="Iconify" /></item>
+    <item label="Maximizar / restaurar"><action name="ToggleMaximize" /></item>
+    <item label="Pantalla completa"><action name="ToggleFullscreen" /></item>
+    <separator />
+    <item label="A la mitad izquierda"><action name="SnapToEdge" direction="left" /></item>
+    <item label="A la mitad derecha"><action name="SnapToEdge" direction="right" /></item>
+    <item label="Siempre encima"><action name="ToggleAlwaysOnTop" /></item>
+    <separator />
+    <item label="Cerrar"><action name="Close" /></item>
+  </menu>
+  <!-- the desktop itself normally answers right clicks (the wallpaper's own menu); this only shows if it is not
+       there, e.g. while the desktop shell restarts -->
+  <menu id="root-menu">
+    <item label="Terminal"><action name="Execute" command="foot" /></item>
+    <item label="Ajustes"><action name="Execute" command="nexusctl open settings" /></item>
+  </menu>
+</openbox_menu>

@@ -1,0 +1,330 @@
+#!/usr/bin/python3
+"""nexus-greeter: the NEXUS OS login screen, a greetd greeter.
+
+Looks exactly like the lock screen (it loads /usr/share/nexus/lock/style.css and the same artwork): clock, date,
+the user's initial and name, and the glass password pill. It runs as the greeter user (_greetd) inside a minimal labwc
+started by nexus-greeter-session, and talks to greetd over $GREETD_SOCK (32-bit native-endian length + JSON):
+create_session -> post_auth_message_response (the password) -> start_session(nexus-session). The password only ever
+goes to greetd; nothing is written to disk except the name of the last user who logged in (to preselect it).
+"""
+import json
+import os
+import pwd
+import socket
+import struct
+import subprocess
+import sys
+import threading
+
+import gi
+
+gi.require_version("Gdk", "3.0")
+gi.require_version("Gtk", "3.0")
+gi.require_version("GtkLayerShell", "0.1")
+from gi.repository import Gdk, GLib, Gtk, GtkLayerShell  # noqa: E402
+
+SESSION = ["/usr/bin/nexus-session"]
+ART = "/usr/share/nexus/lock/"
+HERE = "/usr/share/nexus/greeter/"
+EXTRA_CSS = HERE + "greeter.css"
+COMPACT_CSS = ART + "compact.css"      # short screens, as on the lock screen
+LAST = os.path.join(os.environ.get("HOME") or "/var/lib/greetd", "nexus-last-user")
+
+
+def log(*a):
+    print("nexus-greeter:", *a, file=sys.stderr, flush=True)
+
+
+class Greetd:
+    """greetd IPC: one request, one reply, over the socket greetd hands the greeter."""
+
+    def __init__(self, path):
+        self.sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        self.sock.connect(path)
+
+    def _read(self, n):
+        buf = b""
+        while len(buf) < n:
+            chunk = self.sock.recv(n - len(buf))
+            if not chunk:
+                raise ConnectionError("greetd closed the connection")
+            buf += chunk
+        return buf
+
+    def call(self, **req):
+        data = json.dumps(req).encode()
+        self.sock.sendall(struct.pack("=I", len(data)) + data)
+        (n,) = struct.unpack("=I", self._read(4))
+        return json.loads(self._read(n))
+
+
+def login(greetd, username, password):
+    """-> None when the session is starting, else the message to show. Runs in a worker thread (PAM is slow on purpose
+    after a wrong password)."""
+    try:
+        r = greetd.call(type="create_session", username=username)
+        secrets = 0
+        while r.get("type") == "auth_message":
+            if r.get("auth_message_type") in ("secret", "visible"):
+                secrets += 1
+                if secrets > 1:          # a second question (expired password, 2FA...): not something this screen can do
+                    break
+                r = greetd.call(type="post_auth_message_response", response=password)
+            else:                        # info / error text from PAM: acknowledge and go on
+                log("pam:", r.get("auth_message", "").strip())
+                r = greetd.call(type="post_auth_message_response")
+        if r.get("type") == "success":
+            r = greetd.call(type="start_session", cmd=SESSION, env=[])
+            if r.get("type") == "success":
+                return None
+        greetd.call(type="cancel_session")
+        if r.get("type") == "error" and r.get("error_type") == "auth_error":
+            return "Contraseña incorrecta"
+        if r.get("type") == "auth_message":
+            return "Esta cuenta necesita un paso más: entra desde una terminal (Ctrl+Alt+F2)"
+        log("greetd:", r)
+        return "No se ha podido iniciar la sesión"
+    except (OSError, ValueError, ConnectionError) as e:
+        log("greetd error:", e)
+        return "No se ha podido hablar con greetd"
+
+
+def people():
+    """Human accounts: uid 1000-59999 with a login shell. Display name = first GECOS field."""
+    out = []
+    for p in pwd.getpwall():
+        if 1000 <= p.pw_uid < 60000 and not p.pw_shell.endswith(("nologin", "false")):
+            name = (p.pw_gecos.split(",")[0] or p.pw_name).strip()
+            out.append((p.pw_name, name))
+    return sorted(out)
+
+
+def remembered(users):
+    try:
+        with open(LAST) as f:
+            last = f.read().strip()
+        for i, (u, _) in enumerate(users):
+            if u == last:
+                return i
+    except OSError:
+        pass
+    return 0
+
+
+def remember(user):
+    try:
+        tmp = LAST + ".tmp"
+        with open(tmp, "w") as f:
+            f.write(user + "\n")
+        os.replace(tmp, LAST)
+    except OSError as e:
+        log("could not remember the user:", e)
+
+
+def shortest_screen():
+    """Height in points (logical pixels) of the shortest monitor, 0 if unknown."""
+    display = Gdk.Display.get_default()
+    heights = [display.get_monitor(i).get_geometry().height for i in range(display.get_n_monitors())]
+    return min(heights) if heights else 0
+
+
+def label(text, name, **kw):
+    w = Gtk.Label(label=text, **kw)
+    w.set_name(name)
+    return w
+
+
+class Greeter(Gtk.Window):
+    def __init__(self, users):
+        super().__init__(title="NEXUS")
+        self.users = users
+        self.current = remembered(users)
+        self.busy = False
+        self.greetd = Greetd(os.environ["GREETD_SOCK"])
+
+        GtkLayerShell.init_for_window(self)
+        GtkLayerShell.set_namespace(self, "nexus-greeter")
+        GtkLayerShell.set_layer(self, GtkLayerShell.Layer.OVERLAY)
+        for edge in (GtkLayerShell.Edge.TOP, GtkLayerShell.Edge.BOTTOM, GtkLayerShell.Edge.LEFT, GtkLayerShell.Edge.RIGHT):
+            GtkLayerShell.set_anchor(self, edge, True)
+        GtkLayerShell.set_exclusive_zone(self, -1)
+        GtkLayerShell.set_keyboard_mode(self, GtkLayerShell.KeyboardMode.EXCLUSIVE)
+
+        overlay = Gtk.Overlay()
+        self.add(overlay)
+
+        # the column scrolls (without a scrollbar) rather than making the window taller than the screen
+        scroll = Gtk.ScrolledWindow(hscrollbar_policy=Gtk.PolicyType.NEVER, vscrollbar_policy=Gtk.PolicyType.EXTERNAL)
+        viewport = Gtk.Viewport(shadow_type=Gtk.ShadowType.NONE)
+        scroll.add(viewport)
+        overlay.add(scroll)
+
+        center = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, halign=Gtk.Align.CENTER, valign=Gtk.Align.CENTER)
+        center.set_name("nexus-center")
+        viewport.add(center)
+
+        logo = Gtk.Image.new_from_file(ART + "logo.png")
+        logo.set_name("nexus-logo")
+        center.add(logo)
+        center.add(label("NEXUS OS", "nexus-wordmark"))
+        self.clock = label("", "clock-label", halign=Gtk.Align.CENTER)
+        self.date = label("", "date-label", halign=Gtk.Align.CENTER)
+        center.add(self.clock)
+        center.add(self.date)
+
+        self.avatar = label("", "nexus-avatar", halign=Gtk.Align.CENTER)
+        self.name = label("", "nexus-user", halign=Gtk.Align.CENTER)
+        center.add(self.avatar)
+        center.add(self.name)
+
+        self.pill = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, halign=Gtk.Align.CENTER)
+        self.pill.set_name("nexus-pill")
+        self.entry = Gtk.Entry(visibility=False, caps_lock_warning=False, input_purpose=Gtk.InputPurpose.PASSWORD)
+        self.entry.set_name("input-field")
+        self.entry.set_size_request(330, -1)
+        self.entry.connect("activate", self.submit)
+        self.button = Gtk.Button(label="→", tooltip_text="Entrar")
+        self.button.set_name("unlock-button")
+        self.button.connect("clicked", self.submit)
+        self.pill.add(self.entry)
+        self.pill.add(self.button)
+        center.add(self.pill)
+
+        notes = Gtk.Box(spacing=8, halign=Gtk.Align.CENTER)
+        notes.set_name("nexus-notes")
+        self.warning = label("", "warning-label")
+        self.error = label("", "error-label")
+        notes.add(self.warning)
+        notes.add(self.error)
+        center.add(notes)
+        self.hint = label("", "nexus-hint", halign=Gtk.Align.CENTER)
+        center.add(self.hint)
+
+        # other accounts on this machine, as small initials under the hint (only when there is more than one)
+        self.others = Gtk.Box(spacing=12, halign=Gtk.Align.CENTER)
+        self.others.set_name("nexus-others")
+        center.add(self.others)
+
+        # restart / power off, bottom right
+        power = Gtk.Box(spacing=12, halign=Gtk.Align.END, valign=Gtk.Align.END)
+        power.set_name("nexus-power")
+        for icon, tip, verb in (("restart.png", "Reiniciar", "reboot"), ("power.png", "Apagar", "poweroff")):
+            b = Gtk.Button(tooltip_text=tip)
+            b.get_style_context().add_class("nexus-round")
+            b.add(Gtk.Image.new_from_file(HERE + icon))     # PNG: GTK 3 here has no SVG loader
+            b.connect("clicked", self.power, verb)
+            power.add(b)
+        overlay.add_overlay(power)
+
+        keymap = Gdk.Keymap.get_for_display(Gdk.Display.get_default())
+        keymap.connect("state-changed", self.caps)
+        self.caps(keymap)
+
+        self.select(self.current)
+        self.tick()
+        GLib.timeout_add_seconds(1, self.tick)
+        self.connect("destroy", Gtk.main_quit)
+
+    # -- state ------------------------------------------------------------------------------------------------------
+    def tick(self):
+        now = GLib.DateTime.new_now_local()
+        self.clock.set_text(now.format("%H:%M"))
+        date = now.format("%A, %-d de %B")                 # "lunes, ..." -> "Lunes, ...", as on the desktop
+        self.date.set_text(date[:1].upper() + date[1:])
+        return True
+
+    def caps(self, keymap):
+        self.warning.set_text("Bloq Mayús está activado" if keymap.get_caps_lock_state() else "")
+
+    def select(self, i):
+        self.current = i
+        user, name = self.users[i]
+        self.avatar.set_text(name[:1].upper())
+        self.name.set_text(name)
+        self.error.set_text("")
+        self.hint.set_text("Escribe tu contraseña y pulsa Intro")
+        self.entry.set_text("")
+        for child in self.others.get_children():
+            self.others.remove(child)
+        for j, (_, other) in enumerate(self.users):
+            if j == i:
+                continue
+            b = Gtk.Button(label=other[:1].upper(), tooltip_text="Entrar como " + other)
+            b.get_style_context().add_class("nexus-other")
+            b.connect("clicked", lambda _b, j=j: self.select(j))
+            self.others.add(b)
+        self.others.show_all()
+        self.entry.grab_focus()
+
+    def set_busy(self, busy):
+        self.busy = busy
+        self.entry.set_sensitive(not busy)
+        self.button.set_sensitive(not busy)
+        self.hint.set_text("Comprobando…" if busy else "Escribe tu contraseña y pulsa Intro")
+
+    # -- actions ----------------------------------------------------------------------------------------------------
+    def submit(self, *_):
+        if self.busy:
+            return
+        password = self.entry.get_text()
+        if not password:
+            self.entry.grab_focus()
+            return
+        user = self.users[self.current][0]
+        self.error.set_text("")
+        self.set_busy(True)
+
+        def work():
+            err = login(self.greetd, user, password)
+            GLib.idle_add(self.done, user, err)
+
+        threading.Thread(target=work, daemon=True).start()
+
+    def done(self, user, err):
+        if err is None:
+            remember(user)
+            Gtk.main_quit()                  # greetd starts the session once the greeter (and its labwc) are gone
+            return False
+        self.set_busy(False)
+        self.entry.set_text("")
+        self.error.set_text(err)
+        ctx = self.pill.get_style_context()  # a short shake, like a head saying no
+        ctx.remove_class("shake")
+        ctx.add_class("shake")
+        GLib.timeout_add(500, lambda: ctx.remove_class("shake") or False)
+        self.entry.grab_focus()
+        return False
+
+    def power(self, _button, verb):
+        try:
+            subprocess.Popen(["systemctl", verb], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                             stderr=subprocess.DEVNULL)
+        except OSError as e:
+            log(verb, "failed:", e)
+
+
+def main():
+    if "GREETD_SOCK" not in os.environ:
+        sys.exit("nexus-greeter: run me from greetd (no GREETD_SOCK)")
+    users = people()
+    if not users:
+        sys.exit("nexus-greeter: no user accounts")
+    css = Gtk.CssProvider()
+    css.load_from_path(ART + "style.css")
+    Gtk.StyleContext.add_provider_for_screen(Gdk.Screen.get_default(), css, Gtk.STYLE_PROVIDER_PRIORITY_USER)
+    sheets = [EXTRA_CSS]
+    if shortest_screen() < 780:
+        sheets.append(COMPACT_CSS)
+    for i, sheet in enumerate(sheets):
+        if os.path.exists(sheet):
+            extra = Gtk.CssProvider()
+            extra.load_from_path(sheet)
+            Gtk.StyleContext.add_provider_for_screen(Gdk.Screen.get_default(), extra,
+                                                     Gtk.STYLE_PROVIDER_PRIORITY_USER + 1 + i)
+    win = Greeter(users)
+    win.show_all()
+    Gtk.main()
+
+
+if __name__ == "__main__":
+    main()

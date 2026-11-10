@@ -1,0 +1,32 @@
+[Unit]
+Description=NEXUS Update (signed updates of NEXUS OS and Debian's updates, for Ajustes → Actualizaciones)
+Documentation=file:///usr/lib/nexus/engine/core/src/updated.ts
+Wants=network-online.target
+After=network-online.target nexus-engined.service
+
+[Service]
+Type=simple
+# root: it replaces NEXUS's system files and installs packages. It has no network port: only the unix socket
+# /run/nexus-update/updated.sock, which only the group nexus-update (the desktop's people) can open, and every
+# NEXUS update it installs must be signed with /usr/share/nexus/update/signing.pub.
+WorkingDirectory=/usr/lib/nexus/engine
+Environment=PATH=/usr/lib/nexus/node/bin:/usr/sbin:/usr/bin:/sbin:/bin
+ExecStart=/usr/lib/nexus/node/bin/node --experimental-transform-types --disable-warning=ExperimentalWarning core/src/updated.ts
+Restart=on-failure
+RestartSec=5
+StateDirectory=nexus-update
+StateDirectoryMode=0700
+CacheDirectory=nexus-update
+CacheDirectoryMode=0700
+RuntimeDirectory=nexus-update
+RuntimeDirectoryMode=0710
+UMask=0022
+# a restart of this service must never kill a dpkg/apt it started halfway through
+KillMode=process
+TimeoutStopSec=20
+PrivateTmp=yes
+# read-only, not hidden: it looks in /run/user for the desktops it must restart after an update
+ProtectHome=read-only
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,16 @@
+#!/bin/sh
+# nexusctl: talk to the NEXUS Engine and the desktop session from a terminal or a key binding.
+set -eu
+ENGINE=http://127.0.0.1:7777 SESSION=http://127.0.0.1:7779
+etok() { cat /run/nexus/token 2>/dev/null || { echo "nexusctl: cannot read /run/nexus/token (are you in group nexus-shell?)" >&2; exit 1; }; }
+stok() { cat "${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/nexus/session.token" 2>/dev/null || { echo "nexusctl: no desktop session" >&2; exit 1; }; }
+json() { printf '%s' "$1" | tr '\n\r\t' '   ' | sed 's/\\/\\\\/g; s/"/\\"/g'; }
+case "${1:-help}" in
+  status) curl -fsS -H "Authorization: Bearer $(etok)" "$ENGINE/api/system"; echo ;;
+  ask)    shift; curl -fsS -H "Authorization: Bearer $(etok)" -H 'Content-Type: application/json' -d "{\"text\":\"$(json "$*")\"}" "$ENGINE/api/ai/ask"; echo ;;
+  open)   curl -fsS -H "Authorization: Bearer $(stok)" -H 'Content-Type: application/json' -d "{\"app\":\"$(json "${2:?app}")\"}" "$SESSION/launch" >/dev/null ;;
+  ui)     shift; p="${1:-ai}"; [ $# -gt 0 ] && shift
+          if [ $# -gt 0 ]; then d="{\"panel\":\"$(json "$p")\",\"text\":\"$(json "$*")\"}"; else d="{\"panel\":\"$(json "$p")\"}"; fi
+          curl -fsS -H "Authorization: Bearer $(stok)" -H 'Content-Type: application/json' -d "$d" "$SESSION/ui" >/dev/null ;;
+  *) echo "usage: nexusctl status | ask <text> | open <terminal|files|editor|monitor|settings> | ui <ai|launcher|power> [question for the AI panel]" ;;
+esac

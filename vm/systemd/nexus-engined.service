@@ -1,0 +1,39 @@
+[Unit]
+Description=NEXUS Engine (local control API, loopback only)
+After=network.target
+
+[Service]
+Type=simple
+User=nexus
+Group=nexus
+Environment=NEXUS_DATA=/var/lib/nexus
+Environment=NEXUS_PORT=7777
+Environment=PATH=/opt/node/bin:/usr/bin:/bin
+WorkingDirectory=/opt/nexus
+ExecStart=/opt/node/bin/node --experimental-transform-types --disable-warning=ExperimentalWarning core/src/server.ts
+Restart=on-failure
+RestartSec=2
+# node exits 143 on SIGTERM: that is a clean stop
+SuccessExitStatus=143
+TimeoutStopSec=10
+StateDirectory=nexus
+StateDirectoryMode=0700
+# Hardening (the Engine only needs loopback TCP and its own state directory)
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+RestrictNamespaces=yes
+LockPersonality=yes
+CapabilityBoundingSet=
+SystemCallArchitectures=native
+IPAddressAllow=localhost
+IPAddressDeny=any
+
+[Install]
+WantedBy=multi-user.target

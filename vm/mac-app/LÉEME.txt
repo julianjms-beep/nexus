@@ -1,0 +1,38 @@
+NEXUS OS 0.2.13 — cómo usarlo en tu Mac
+=========================================
+
+NEXUS OS se abre como una app más, dentro de una ventana. macOS sigue igual: no se borra ni se cambia nada.
+
+ABRIRLO
+  1. Conecta el disco duro.
+  2. Doble clic en «NEXUS OS.app» (esta carpeta).
+  3. Espera a que arranque (desde un disco externo tarda un poco más la primera vez).
+  Puedes agrandar la ventana o ponerla a pantalla completa con el botón verde.
+
+CONTRASEÑA
+  nexus   (para desbloquear la pantalla y para las tareas de administrador)
+
+NEXUS AI Y NEXUS SEARCH EN LA WEB
+  Necesitan tu clave de Claude: en NEXUS abre Ajustes → NEXUS AI y pégala.
+  El portapapeles se comparte: copia la clave en el Mac (⌘C) y pégala en NEXUS (⌘V).
+  Cada búsqueda en la web cuesta de 1 a 4 céntimos de tu saldo de Claude; repetirla en 30 minutos es gratis.
+
+CERRARLO
+  Cierra la ventana (botón rojo) o apaga desde NEXUS. NEXUS se apaga bien solo (tarda unos segundos).
+
+MUY IMPORTANTE
+  No desconectes el disco duro mientras NEXUS esté abierto: podrías estropear el sistema.
+  Cierra NEXUS primero y después expulsa el disco como siempre.
+
+QUÉ HAY EN ESTA CARPETA
+  NEXUS OS.app           la app que abre NEXUS
+  Sistema/nexus-os.raw   el sistema completo y todo lo que guardes dentro de NEXUS (ocupa 32 GB)
+  En el Mac solo se guardan unos archivos pequeños de arranque en:
+  ~/Library/Application Support/NEXUS OS
+
+PASARLO AL MAC (va más rápido que desde el disco)
+  Copia la carpeta entera «Instalar NEXUS» al Mac. Necesitas unos 33 GB libres.
+
+QUITARLO
+  Arrastra la carpeta «Instalar NEXUS» a la Papelera (y, si quieres, la carpeta de Application Support de arriba).
+  macOS no cambia.

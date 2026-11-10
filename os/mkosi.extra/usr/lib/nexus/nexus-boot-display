@@ -1,0 +1,24 @@
+#!/usr/bin/python3 -I
+"""Save the screen size the PC's firmware booted at, on virtual machines that run on PCs (VirtualBox on Windows).
+
+The Windows launcher (vm/windows/nexus-windows.ps1) sets the VM's firmware screen to the size that fits the PC's
+screen. The virtual graphics card (VirtualBox's VMSVGA) often offers a smaller preferred size, so nexus-display and
+the session autostart switch the screen to this one: /run/nexus-boot-display, e.g. "1920x1080".
+The size is in struct screen_info, at the start of the boot parameters the kernel keeps (x86 only, readable by root).
+Run once per boot by nexus-boot-display.service.
+"""
+import os
+import struct
+
+VIDEO_TYPE_VLFB, VIDEO_TYPE_EFI = 0x23, 0x70
+OUT = "/run/nexus-boot-display"
+
+with open("/sys/kernel/boot_params/data", "rb") as f:
+    si = f.read(0x18)
+if len(si) == 0x18 and si[0x0F] in (VIDEO_TYPE_VLFB, VIDEO_TYPE_EFI):   # orig_video_isVGA: a linear framebuffer
+    width, height = struct.unpack_from("<HH", si, 0x12)                  # lfb_width, lfb_height
+    if 640 <= width <= 7680 and 480 <= height <= 4320:
+        with open(OUT + ".new", "w", encoding="ascii") as f:
+            f.write(f"{width}x{height}\n")
+        os.chmod(OUT + ".new", 0o644)
+        os.replace(OUT + ".new", OUT)

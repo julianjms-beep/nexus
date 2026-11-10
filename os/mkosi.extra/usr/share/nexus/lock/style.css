@@ -1,0 +1,139 @@
+/* NEXUS lock screen (gtklock, GTK 3 CSS). Same palette as the shell: navy, violet #7c6cff, cyan #38d9ff. */
+window {
+  background-color: #06070d;
+  background-image: url("file:///usr/share/nexus/lock/aurora.png");
+  background-size: cover;
+  background-position: center;
+  color: #eef0ff;
+  font-family: "Inter", sans-serif;
+}
+
+/* the column's scrolled window (no scrollbar; see layout.ui) must not draw anything of its own */
+scrolledwindow, viewport { background: none; background-color: transparent; border: none; box-shadow: none; }
+scrolledwindow undershoot, scrolledwindow overshoot { background: none; box-shadow: none; }
+
+#nexus-wordmark {
+  margin-top: 14px;
+  font-size: 19px;
+  font-weight: 400;
+  letter-spacing: 9px;
+  color: rgba(226, 222, 255, 0.92);
+}
+
+#clock-label {
+  margin-top: 6px;
+  font-family: "Inter Display", "Inter", sans-serif;
+  font-size: 148px;
+  font-weight: 200;
+  color: #f4f2ff;
+  text-shadow: 0 2px 28px rgba(124, 108, 255, 0.35);
+}
+
+#date-label {
+  margin-top: -6px;
+  font-size: 27px;
+  font-weight: 400;
+  color: rgba(200, 192, 255, 0.86);
+}
+
+#nexus-avatar {
+  margin-top: 40px;
+  min-width: 92px;
+  min-height: 92px;
+  border-radius: 46px;
+  background-image: linear-gradient(135deg, #a698ff 0%, #7c6cff 55%, #4f8dff 100%);
+  box-shadow: 0 10px 34px rgba(124, 108, 255, 0.50), inset 0 1px 0 rgba(255, 255, 255, 0.35);
+  color: #ffffff;
+  font-size: 40px;
+  font-weight: 500;
+}
+
+#nexus-user {
+  margin-top: 14px;
+  margin-bottom: 26px;
+  font-size: 26px;
+  font-weight: 500;
+  color: #f4f2ff;
+}
+
+/* the glass pill: password field + arrow button */
+/* no outer shadow: the revealer around it clips anything outside its box into a hard rectangle */
+#nexus-pill {
+  background-color: rgba(165, 155, 255, 0.17);
+  border: 1px solid rgba(255, 255, 255, 0.26);
+  border-radius: 30px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12);
+}
+/* GTK 3 hides an entry's placeholder while it has focus (always, on a lock screen), so the hint lives below */
+#nexus-hint { margin-top: 2px; font-size: 14px; color: rgba(214, 208, 255, 0.62); }
+
+#input-field {
+  min-height: 58px;
+  padding: 0 24px;
+  background: none;
+  background-color: transparent;
+  border: none;
+  border-radius: 30px 0 0 30px;
+  box-shadow: none;
+  outline-color: transparent;
+  color: #f4f2ff;
+  caret-color: #a698ff;
+  font-size: 18px;
+}
+#input-field selection { background-color: rgba(124, 108, 255, 0.55); color: #ffffff; }
+
+#unlock-button {
+  min-width: 68px;
+  min-height: 58px;
+  padding: 0;
+  background: none;
+  background-color: transparent;
+  border: none;
+  border-left: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 0 30px 30px 0;
+  box-shadow: none;
+  text-shadow: none;
+  -gtk-icon-shadow: none;
+  outline-color: transparent;
+  color: #f4f2ff;
+  font-size: 24px;
+}
+#unlock-button:hover { background-color: rgba(255, 255, 255, 0.08); }
+#unlock-button:active { background-color: rgba(124, 108, 255, 0.30); }
+#unlock-button label { color: #f4f2ff; }
+
+#warning-label { color: #ffd479; font-size: 15px; }
+#error-label { color: #ff8fa3; font-size: 15px; }
+#message-box label { color: rgba(226, 222, 255, 0.86); font-size: 15px; }
+
+/* bottom left: the NEXUS AI card and the Monitor card, same width, stacked */
+#nexus-cards { margin: 0 0 26px 24px; }
+.nexus-card {
+  padding: 14px 20px 14px 14px;
+  background-color: rgba(120, 110, 220, 0.14);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 18px;
+  box-shadow: 0 10px 34px rgba(0, 0, 0, 0.30);
+}
+
+.nexus-card-text { font-size: 15px; color: rgba(232, 228, 255, 0.88); }
+
+/* bottom right (module nexus-lockbar): network | battery | power, and the power choices sliding out to the left */
+#nexus-status { margin: 0 24px 26px 0; padding: 8px 10px 8px 16px; }
+.nexus-sep { min-width: 1px; min-height: 22px; margin: 0 16px; background-color: rgba(255, 255, 255, 0.24); }
+#nexus-battery { margin-left: 8px; font-size: 16px; font-weight: 500; color: rgba(255, 255, 255, 0.92); }
+#nexus-power-button {
+  min-width: 40px; min-height: 40px; padding: 0; border-radius: 20px;
+  background: none; border: none; box-shadow: none;
+}
+#nexus-power-button:hover { background-color: rgba(255, 255, 255, 0.10); }
+#nexus-power-button:active { background-color: rgba(124, 108, 255, 0.30); }
+#nexus-power-menu { margin-right: 16px; }
+.nexus-power-item {
+  min-height: 38px; padding: 0 16px; border-radius: 19px;
+  background-color: rgba(120, 110, 220, 0.16); background-image: none;
+  border: 1px solid rgba(255, 255, 255, 0.18); box-shadow: none;
+}
+.nexus-power-item label { color: #f4f2ff; font-size: 15px; font-weight: 500; }
+.nexus-power-item:hover { background-color: rgba(255, 255, 255, 0.14); }
+.nexus-power-item:active { background-color: rgba(124, 108, 255, 0.34); }

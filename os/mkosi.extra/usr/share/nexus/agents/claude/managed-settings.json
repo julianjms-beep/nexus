@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": ["mcp__nexus"],
+    "deny": ["Bash", "Write", "Edit", "NotebookEdit"],
+    "disableBypassPermissionsMode": "disable"
+  },
+  "env": {
+    "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
+    "DISABLE_AUTOUPDATER": "1"
+  }
+}

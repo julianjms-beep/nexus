@@ -1,0 +1,37 @@
+#!/bin/sh
+# Start a NEXUS app by name: nexus-app Files|Notes|Monitor|Settings|Browser|Automations|Connect|Agents [folder|address|page]
+# (a folder only for Files: Archivos opens there; nexus-sessiond has already checked it is inside the home folder.
+#  An address only for Browser: Navegador opens it in a new tab. A page only for Settings: fondo, ai, …)
+case "$1" in Files|Notes|Monitor|Settings|Browser|Automations|Connect|Agents|Store|WebApp|Mail) ;; *) echo "usage: nexus-app Files|Notes|Monitor|Settings|Browser|Automations|Connect|Agents|Store|WebApp|Mail [folder|address]" >&2; exit 2;; esac
+export QML_XHR_ALLOW_FILE_READ=1 QML_XHR_ALLOW_FILE_WRITE=1 QT_QUICK_CONTROLS_STYLE=Basic
+app=$1
+extra=
+# a web app from NEXUS Store (nexus-sessiond starts it, only for an installed app): address, name, id
+url= name= id=
+if [ "$app" = WebApp ]; then url=${2:-} name=${3:-} id=${4:-}; fi
+if [ "$app" = Browser ] || [ "$app" = WebApp ]; then
+    # Chromium draws pages on the GPU; with software OpenGL (the lab VM) its GPU process only gets in the way
+    [ "${LIBGL_ALWAYS_SOFTWARE:-0}" = 1 ] && export QTWEBENGINE_CHROMIUM_FLAGS="--disable-gpu ${QTWEBENGINE_CHROMIUM_FLAGS:-}"
+    [ "$app" = Browser ] && extra="--open=${2:-}"
+elif [ "$app" = Files ] && [ -n "$2" ]; then
+    extra="--folder=$2"
+elif [ "$app" = Settings ] && [ -n "$2" ]; then
+    case "$2" in *[!a-z]*) ;; *) extra="--page=$2" ;; esac   # Ajustes opens at that page (nexus-sessiond checked the name)
+fi
+# The very first frame already has the person's theme and accent (the window fades in from it; no dark→light flash).
+# nexus-sessiond writes prefs.json itself and only ever stores "light"/"dark" and #rrggbb, so a plain match is enough.
+prefs="${XDG_CONFIG_HOME:-$HOME/.config}/nexus/prefs.json"
+theme=dark
+accent=
+if [ -r "$prefs" ]; then
+    t=$(sed -n 's/.*"theme": *"\(light\|dark\)".*/\1/p' "$prefs" | head -n 1)
+    [ -n "$t" ] && theme=$t
+    accent=$(sed -n 's/.*"accent": *"\(#[0-9a-fA-F]\{6\}\)".*/\1/p' "$prefs" | head -n 1)
+    grep -q '"animations": *false' "$prefs" && motion=off
+fi
+set -- "--nexus-theme=$theme"
+[ -n "${motion:-}" ] && set -- "$@" "--nexus-motion=off"
+[ -n "$accent" ] && set -- "$@" "--nexus-accent=$accent"
+[ -n "$extra" ] && set -- "$@" "$extra"
+[ "$app" = WebApp ] && set -- "$@" "--url=$url" "--name=$name" "--id=$id"
+exec /usr/lib/qt6/bin/qml "/usr/share/nexus/apps/$app.qml" -- "$@" "${XDG_RUNTIME_DIR}/nexus/session.token"

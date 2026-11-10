@@ -1,0 +1,53 @@
+[Unit]
+Description=NEXUS Engine (agents, NEXUS AI, policy and audit)
+Documentation=file:///usr/share/doc/nexus/README
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+User=nexus-engine
+# primary group nexus-shell: the token in /run/nexus is readable by the desktop session (group nexus-shell), nobody else
+Group=nexus-shell
+Environment=NEXUS_DATA=/var/lib/nexus NEXUS_PORT=7777 NEXUS_SHELL_TOKEN_FILE=/run/nexus/token HOME=/var/lib/nexus
+Environment=PATH=/usr/lib/nexus/node/bin:/usr/bin:/bin
+WorkingDirectory=/usr/lib/nexus/engine
+ExecStart=/usr/lib/nexus/node/bin/node --experimental-transform-types --disable-warning=ExperimentalWarning core/src/server.ts
+Restart=always
+RestartSec=2
+SuccessExitStatus=143
+TimeoutStopSec=10
+StateDirectory=nexus
+StateDirectoryMode=0700
+RuntimeDirectory=nexus
+RuntimeDirectoryMode=0750
+UMask=0077
+# Sandboxed jobs get their own cgroups below ours (bubblewrap + cgroup v2 limits, see core/src/iso-linux.ts)
+Delegate=yes
+DelegateSubgroup=nexus-supervisor
+# Hardening. Namespaces and netlink stay allowed because bubblewrap needs them to build each job's sandbox;
+# outbound network stays allowed for the Claude API (jobs themselves get an empty network namespace).
+# Deliberately NOT set (each one breaks bubblewrap, measured on NEXUS OS 0.1 / systemd 257, 2026-11-08):
+#   ProtectKernelTunables, ProtectKernelLogs, ProtectHostname: they overmount parts of /proc, and the kernel then refuses
+#     a fresh proc mount inside the job's user namespace ("Can't mount proc on /proc: Operation not permitted");
+#   RestrictSUIDSGID: its seccomp filter makes bwrap's bind mounts fail ("Can't open source /usr: Function not implemented").
+# The Engine is still an unprivileged user with no capabilities, so it cannot write kernel tunables or read kernel logs.
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelModules=yes
+ProtectClock=yes
+ProtectProc=invisible
+ProtectControlGroups=no
+RestrictNamespaces=user pid net ipc uts cgroup mnt
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
+RestrictRealtime=yes
+LockPersonality=yes
+SystemCallArchitectures=native
+
+[Install]
+WantedBy=multi-user.target

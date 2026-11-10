@@ -1,0 +1,15 @@
+#!/bin/sh
+# NEXUS shell: QML layer-shell surfaces (wallpaper, top bar, dock, NEXUS AI, dialogs).
+# Starts at the same time as nexus-sessiond: Session.qml keeps retrying the token until sessiond has written it, so the
+# first picture (the start-up fade) is not held back by sessiond's start.
+TOKEN="${XDG_RUNTIME_DIR}/nexus/session.token"
+export QML_XHR_ALLOW_FILE_READ=1 QT_QUICK_CONTROLS_STYLE=Basic
+# the real interface size (Qt only sees the rounded-up integer): the start-up fade lines up with the boot splash with it
+SCALE="${NEXUS_SCALE:-$(nexus-display --current 2>/dev/null)}"   # NEXUS_SCALE: set by the session autostart
+# the first start of this login shows the start-up fade; a later one (after an update or a crash: the shell restarts
+# while the person's windows are open) only puts the bar, dock and wallpaper back, without covering anything.
+# $XDG_RUNTIME_DIR is emptied when the person logs out, so the next login has its fade again.
+MARK="${XDG_RUNTIME_DIR}/nexus/shell-started"
+MODE=start
+if [ -e "$MARK" ]; then MODE=reload; else mkdir -p -m 0700 "${XDG_RUNTIME_DIR}/nexus" && : > "$MARK"; fi
+exec /usr/lib/qt6/bin/qml /usr/share/nexus/shell/Main.qml -- "$TOKEN" "scale=${SCALE:-1}" "$MODE"

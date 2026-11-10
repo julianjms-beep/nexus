@@ -1,0 +1,142 @@
+#!/usr/bin/python3
+"""nexus-display: set the interface size (Wayland output scale) of every screen.
+
+  nexus-display            use the preference in ~/.config/nexus/prefs.json ("scale": "auto" | 1 | 1.25 | 1.5 | 2)
+  nexus-display auto|1.25  use that value
+  nexus-display --current  print the scale the first screen has now (the shell's start-up fade needs it)
+  nexus-display --min-height  print the height in points of the shortest screen (lock/login screens pick a layout)
+
+"auto" follows the screen's real pixel density when it reports its physical size (EDID), and otherwise its
+resolution (virtual machines report no size): the aim is a desktop about 1150-1450 points wide, the size the NEXUS
+interface is designed for. Called by the session autostart (before the shell appears), by nexus-sessiond when the
+preference changes, and by the login screen (always "auto": it cannot read anyone's preferences).
+"""
+import json
+import os
+import subprocess
+import sys
+
+CHOICES = (1.0, 1.25, 1.5, 2.0)
+BOGUS_MM = {(160, 90), (160, 100), (150, 100), (160, 120)}
+BOOT_SIZE = "/run/nexus-boot-display"   # nexus-boot-display.service: VirtualBox on Windows
+
+
+def boot_size():
+    """The screen size the PC's firmware booted at, saved on virtual machines that run on PCs (None elsewhere)."""
+    try:
+        with open(BOOT_SIZE, encoding="ascii") as f:
+            w, h = (int(v) for v in f.read().strip().split("x"))
+        return (w, h) if 640 <= w <= 7680 and 480 <= h <= 4320 else None
+    except (OSError, ValueError):
+        return None
+
+
+def use_boot_size(outputs):
+    """VirtualBox's virtual graphics card often prefers a smaller size than the one the Windows launcher set the VM's
+    screen to (vm/windows/nexus-windows.ps1): give the first screen that size. True if it changed."""
+    size = boot_size()
+    for o in outputs if size else []:
+        mode = next((m for m in o.get("modes", []) if m.get("current")), None)
+        if not o.get("enabled") or not mode:
+            continue
+        if (mode["width"], mode["height"]) == size:
+            return False
+        r = subprocess.run(["wlr-randr", "--output", o["name"], "--custom-mode", f"{size[0]}x{size[1]}"],
+                           check=False, capture_output=True)
+        return r.returncode == 0
+    return False
+
+
+def auto_scale(width, height, mm_w=0, mm_h=0):
+    """Scale for a mode of width x height pixels on a screen mm_w x mm_h millimetres (0 = unknown)."""
+    # projectors and TVs often put the aspect ratio in centimetres (16x9, 16x10) where the size should be
+    if mm_w >= 100 and mm_h >= 60 and (mm_w, mm_h) not in BOGUS_MM:
+        dpi = width / (mm_w / 25.4)
+        if dpi >= 190:
+            return 2.0
+        if dpi >= 150:
+            return 1.5
+        if dpi >= 125:
+            return 1.25
+        return 1.0
+    if height >= 1500:
+        return 2.0
+    if height >= 1100:
+        return 1.5
+    if height >= 860:
+        return 1.25
+    return 1.0
+
+
+def preference():
+    home = os.environ.get("XDG_CONFIG_HOME") or os.path.join(os.environ.get("HOME", "/"), ".config")
+    try:
+        with open(os.path.join(home, "nexus", "prefs.json")) as f:
+            return json.load(f).get("scale", "auto")
+    except (OSError, ValueError, AttributeError):
+        return "auto"
+
+
+def wanted(pref, mode, size):
+    if pref != "auto":
+        try:
+            s = float(pref)
+            if s in CHOICES:
+                return s
+        except (TypeError, ValueError):
+            pass
+    return auto_scale(mode["width"], mode["height"], size.get("width", 0), size.get("height", 0))
+
+
+def main(argv):
+    pref = argv[1] if len(argv) > 1 else preference()
+    try:
+        outputs = json.loads(subprocess.run(["wlr-randr", "--json"], check=True, capture_output=True, text=True).stdout)
+    except (OSError, subprocess.CalledProcessError, ValueError) as e:
+        sys.exit(f"nexus-display: cannot read the screens ({e})")
+    if pref == "--current":
+        print(next((f"{float(o.get('scale', 1)):g}" for o in outputs if o.get("enabled")), "1"))
+        return
+    if pref == "--min-height":
+        heights = []
+        for o in outputs:
+            mode = next((m for m in o.get("modes", []) if m.get("current")), None)
+            if o.get("enabled") and mode:
+                side = mode["width"] if str(o.get("transform", "normal")).endswith(("90", "270")) else mode["height"]
+                heights.append(int(side / float(o.get("scale", 1) or 1)))
+        print(min(heights) if heights else 0)
+        return
+    if use_boot_size(outputs):
+        try:
+            outputs = json.loads(subprocess.run(["wlr-randr", "--json"], check=True, capture_output=True, text=True).stdout)
+        except (OSError, subprocess.CalledProcessError, ValueError) as e:
+            sys.exit(f"nexus-display: cannot read the screens ({e})")
+    applied = []
+    for o in outputs:
+        mode = next((m for m in o.get("modes", []) if m.get("current")), None)
+        if not o.get("enabled") or not mode:
+            continue
+        scale = wanted(pref, mode, o.get("physical_size") or {})
+        if abs(float(o.get("scale", 1)) - scale) > 0.001:
+            subprocess.run(["wlr-randr", "--output", o["name"], "--scale", f"{scale:g}"], check=False)
+        print(f"{o['name']}: {mode['width']}x{mode['height']} at {scale:g}")
+        applied.append(f"{o['name']} {mode['width']}x{mode['height']} {scale:g}\n")
+    remember(applied)
+
+
+def remember(lines):
+    """Keep what was applied, so the next session start (etc/xdg/labwc/autostart) can set the same scale with one
+    wlr-randr call before anything is on screen, instead of waiting for this script (best effort)."""
+    base = os.environ.get("XDG_CACHE_HOME") or os.path.join(os.path.expanduser("~"), ".cache")
+    path = os.path.join(base, "nexus", "display")
+    try:
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path + ".new", "w", encoding="utf-8") as f:
+            f.writelines(lines)
+        os.replace(path + ".new", path)
+    except OSError:
+        pass
+
+
+if __name__ == "__main__":
+    main(sys.argv)

@@ -1,0 +1,9 @@
+#!/bin/sh
+# VS Code on NEXUS OS. Microsoft's `code` starts as an X11 app unless told otherwise, and NEXUS's desktop is Wayland
+# (labwc): this is the same command with the same arguments (`code .`, `code archivo.txt`, `code --install-extension …`),
+# always as a native Wayland window (sharp text, NEXUS's window buttons). /usr/local/bin comes before /usr/bin in PATH.
+if [ ! -x /usr/bin/code ]; then
+    echo "VS Code no está instalado en este NEXUS. Instálalo con: sudo apt install code" >&2
+    exit 127
+fi
+exec /usr/bin/code --ozone-platform=wayland --enable-features=WaylandWindowDecorations "$@"

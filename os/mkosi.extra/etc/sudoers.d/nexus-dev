@@ -1,0 +1,2 @@
+# DEV IMAGE ONLY: passwordless sudo for the lab user. The release profile drops this file.
+nexus ALL=(ALL) NOPASSWD: ALL

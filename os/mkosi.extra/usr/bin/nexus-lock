@@ -1,0 +1,91 @@
+#!/bin/sh
+# Lock the screen with the NEXUS design (gtklock, ext-session-lock); unlock with the account password.
+# Called by Super+L (labwc), the power menu and NEXUS AI ("bloquea la pantalla"). Falls back to plain swaylock.
+set -u
+L=/usr/share/nexus/lock
+uid=$(id -u)
+RUN="${XDG_RUNTIME_DIR:-/run/user/$uid}/nexus"
+plain() { exec swaylock -f -F -c 0b0e17 --inside-color 151a28 --ring-color 7c6cff --key-hl-color 38d9ff --text-color e8ebff --font Inter; }
+
+# one lock at a time
+pgrep -u "$uid" -x gtklock >/dev/null 2>&1 && exit 0
+pgrep -u "$uid" -x swaylock >/dev/null 2>&1 && exit 0
+command -v gtklock >/dev/null 2>&1 && [ -r "$L/layout.ui" ] || plain
+
+# who is this computer's person: the account's full name (else the user name) and its first letter
+name=$(getent passwd "$(id -un)" | cut -d: -f5 | cut -d, -f1)
+[ -n "$name" ] || name=$(id -un)
+initial=$(printf '%s' "$name" | sed 's/^\(.\).*/\U\1/')
+
+# clock style and the NEXUS AI card from the desktop session (quietly skipped if it is not running).
+# The token goes to curl on stdin, never on its command line.
+clock24=1 greeting= wall= wallcolor= wallink=light
+if tok=$(cat "$RUN/session.token" 2>/dev/null); then
+  info=$(printf 'Authorization: Bearer %s\n' "$tok" | curl -fsS -m 2 -H @- http://127.0.0.1:7779/lockinfo 2>/dev/null) || info=
+  clock24=$(printf '%s\n' "$info" | sed -n 's/^clock24=//p')
+  greeting=$(printf '%s\n' "$info" | sed -n 's/^greeting=//p')
+  # the desktop's wallpaper (nexus-sessiond only sends paths without quotes, backslashes or new lines)
+  wall=$(printf '%s\n' "$info" | sed -n 's/^wallpaper=//p')
+  wallcolor=$(printf '%s\n' "$info" | sed -n 's/^wallpaper_color=\(#[0-9a-fA-F]\{6\}\)$/\1/p')
+  [ "$(printf '%s\n' "$info" | sed -n 's/^wallpaper_ink=//p')" = dark ] && wallink=dark
+fi
+if [ "$clock24" = 0 ]; then tf='%-I:%M'; else tf='%H:%M'; fi
+
+# the Monitor card: services that stopped with an error (the system's and this session's); no card if unreadable
+monitor=
+if sys=$(systemctl --failed --no-legend --plain 2>/dev/null); then
+  usr=$(systemctl --user --failed --no-legend --plain 2>/dev/null) || usr=
+  failed=$(printf '%s\n%s\n' "$sys" "$usr" | grep -c .)
+  case "$failed" in
+    0) monitor="Todo en orden, 0 avisos" ;;
+    1) monitor="1 aviso: un servicio se ha parado" ;;
+    *) monitor="$failed avisos: hay servicios parados" ;;
+  esac
+fi
+
+# fill the layout (values XML-escaped; literal replacement, so no character in a name can break it)
+xml() { printf '%s' "$1" | sed 's/&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g; s/"/\&quot;/g'; }
+umask 077
+mkdir -p "$RUN"
+out="$RUN/lock-layout.ui"
+# the card texts are Pango markup inside the XML layout: escaped once for the markup and once for the XML
+N=$(xml "$name") I=$(xml "$initial") G=$(xml "$(xml "$greeting")") M=$(xml "$(xml "$monitor")") awk '
+  function rep(s, k, v,   o, p) { o = ""; while ((p = index(s, k)) > 0) { o = o substr(s, 1, p - 1) v; s = substr(s, p + length(k)) } return o s }
+  /<!--card-->/      { if (ENVIRON["G"] == "") skip = 1; next }
+  /<!--monitor-->/   { if (ENVIRON["M"] == "") skip = 1; next }
+  /<!--\/(card|monitor)-->/ { skip = 0; next }
+  skip               { next }
+  { $0 = rep($0, "@NAME@", ENVIRON["N"]); $0 = rep($0, "@INITIAL@", ENVIRON["I"]); $0 = rep($0, "@GREETING@", ENVIRON["G"])
+    $0 = rep($0, "@MONITOR@", ENVIRON["M"]); print }
+' "$L/layout.ui" > "$out" || plain
+
+# short screens (below 780 points) get the compact style, so the whole column fits (see layout.ui)
+style="$L/style.css"
+h=$(nexus-display --min-height 2>/dev/null) || h=
+case "$h" in ''|*[!0-9]*) h=0 ;; esac
+if [ "$h" -gt 0 ] && [ "$h" -lt 780 ] && [ -r "$L/compact.css" ]; then
+  cat "$L/style.css" "$L/compact.css" > "$RUN/lock-style.css" && style="$RUN/lock-style.css"
+fi
+# the same wallpaper as the desktop, a little darker so the white clock and cards always read (more on light pictures)
+case "$wall" in *'"'*|*'\'*) wall= ;; esac
+if [ -n "$wall" ] && [ -r "$wall" ] || [ -n "$wallcolor" ]; then
+  if [ "$wallink" = dark ]; then shade='rgba(6, 7, 13, 0.42)'; else shade='rgba(6, 7, 13, 0.18)'; fi
+  {
+    cat "$style"
+    if [ -n "$wallcolor" ]; then
+      printf 'window { background-image: linear-gradient(%s, %s); background-color: %s; }\n' "$shade" "$shade" "$wallcolor"
+    else
+      printf 'window { background-image: linear-gradient(%s, %s), url("%s"); background-size: cover; background-position: center; }\n' "$shade" "$shade" "$wall"
+    fi
+    # over a picture the violet glow and the lilac date get lost: plain white with a soft shadow instead
+    printf '#clock-label { color: #ffffff; text-shadow: 0 2px 22px rgba(0, 0, 0, 0.28); }\n'
+    printf '#date-label { color: rgba(255, 255, 255, 0.90); text-shadow: 0 1px 12px rgba(0, 0, 0, 0.30); }\n'
+  } > "$RUN/lock-style-wall.css" && style="$RUN/lock-style-wall.css"
+fi
+
+# -d: return once the screen is locked. Its output goes to a log, so no caller waits on the open pipe until unlock.
+# the NEXUS module (os/lock-module): network / battery / power bottom right, the date with a capital letter
+set --
+[ -r /usr/lib/nexus/nexus-lockbar.so ] && set -- -m /usr/lib/nexus/nexus-lockbar.so
+NO_AT_BRIDGE=1 gtklock -d -s "$style" -x "$out" -t "$tf" -D '%A, %-d de %B' "$@" </dev/null >"$RUN/lock.log" 2>&1 && exit 0
+plain

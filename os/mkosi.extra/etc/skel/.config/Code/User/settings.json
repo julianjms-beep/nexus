@@ -1,0 +1,6 @@
+{
+    "telemetry.telemetryLevel": "off",
+    "window.titleBarStyle": "custom",
+    "workbench.colorTheme": "Default Dark Modern",
+    "terminal.integrated.fontSize": 13
+}

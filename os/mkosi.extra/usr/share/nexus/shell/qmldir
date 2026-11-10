@@ -1,0 +1,27 @@
+singleton Theme 1.0 Theme.qml
+singleton Session 1.0 Session.qml
+BarButton 1.0 BarButton.qml
+NexusMark 1.0 NexusMark.qml
+AppIcon 1.0 AppIcon.qml
+PowerGlyph 1.0 PowerGlyph.qml
+WifiGlyph 1.0 WifiGlyph.qml
+DockItem 1.0 DockItem.qml
+Card 1.0 Card.qml
+Wallpaper 1.0 Wallpaper.qml
+TopBar 1.0 TopBar.qml
+Dock 1.0 Dock.qml
+AiPanel 1.0 AiPanel.qml
+ConfirmDialog 1.0 ConfirmDialog.qml
+PowerMenu 1.0 PowerMenu.qml
+Toasts 1.0 Toasts.qml
+NexusSwitch 1.0 NexusSwitch.qml
+WeatherCard 1.0 WeatherCard.qml
+TodayCard 1.0 TodayCard.qml
+Intro 1.0 Intro.qml
+LineIcon 1.0 LineIcon.qml
+QuickSettings 1.0 QuickSettings.qml
+Taskbar 1.0 Taskbar.qml
+StartMenu 1.0 StartMenu.qml
+MenuBar 1.0 MenuBar.qml
+BatteryGlyph 1.0 BatteryGlyph.qml
+PromptBox 1.0 PromptBox.qml

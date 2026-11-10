@@ -1,0 +1,3 @@
+[Unit]
+Description=NEXUS desktop session
+Wants=nexus-sessiond.service nexus-shell.service nexus-clipboard.service nexus-idle.service

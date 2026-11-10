@@ -1,0 +1,122 @@
+#!/usr/bin/python3 -I
+"""nexus-agente: arranca un agente de IA dentro de su sandbox de NEXUS.
+
+  nexus-agente                                lista tus agentes (se crean en la app Agentes)
+  nexus-agente web -- claude                  Claude Code como el agente «web», con el MCP de NEXUS ya conectado
+  nexus-agente web --objetivo "arregla el test del IVA" -- claude
+  nexus-agente web                            una terminal dentro del sandbox del agente (para ver qué ve)
+
+Dentro solo existen la carpeta del proyecto y lo que le hayas dado; no hay claves SSH, ni tokens, ni escritorio.
+Lo que necesite tus llaves o sea arriesgado lo pide a NEXUS (run_command), y NEXUS te pregunta.
+Para detenerlo: botón Detener en la app Agentes (o Ctrl+C aquí).
+"""
+import json
+import os
+import signal
+import subprocess
+import sys
+import threading
+import urllib.error
+import urllib.request
+
+SESSION = "http://127.0.0.1:7779"
+OPENER = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+DIM, BOLD, ACC, RED, OFF = "\033[38;5;245m", "\033[1m", "\033[38;5;141m", "\033[38;5;203m", "\033[0m"
+
+
+def token() -> str:
+    run = os.environ.get("XDG_RUNTIME_DIR") or f"/run/user/{os.getuid()}"
+    try:
+        with open(os.path.join(run, "nexus", "session.token"), encoding="utf-8") as f:
+            return f.read().strip()
+    except OSError:
+        sys.exit("nexus-agente: no encuentro la sesión de NEXUS (¿estás dentro del escritorio, y no dentro de otro agente?)")
+
+
+def api(method: str, path: str, body=None, timeout=15):
+    req = urllib.request.Request(SESSION + path, method=method, data=None if body is None else json.dumps(body).encode(),
+                                 headers={"Authorization": f"Bearer {token()}", "Content-Type": "application/json"})
+    try:
+        with OPENER.open(req, timeout=timeout) as r:
+            return json.load(r)
+    except urllib.error.HTTPError as e:
+        try:
+            msg = json.load(e).get("error") or f"error {e.code}"
+        except ValueError:
+            msg = f"error {e.code}"
+        raise SystemExit(f"nexus-agente: {msg}")
+    except (urllib.error.URLError, OSError):
+        raise SystemExit("nexus-agente: no llego a la sesión de NEXUS")
+
+
+def show_list() -> int:
+    v = api("GET", "/agents")
+    if not v["agents"]:
+        print("Aún no tienes agentes. Créalos en la app Agentes (en el dock) y luego: nexus-agente <nombre> -- claude")
+        return 0
+    for a in v["agents"]:
+        state = f"{ACC}● en marcha{OFF}" if a.get("running") else f"{DIM}parado{OFF}"
+        print(f"{BOLD}{a['id']}{OFF}  {state}  {DIM}{a['folderShort']}{OFF}")
+        print(f"   {DIM}{', '.join(a['scopes'])}{OFF}")
+    print(f"\n{DIM}Arranca uno con: nexus-agente <nombre> -- claude{OFF}")
+    return 0
+
+
+def main() -> int:
+    args = sys.argv[1:]
+    if args and args[0] in ("-h", "--help"):
+        print(__doc__.strip())
+        return 0
+    if not args or args[0] in ("-l", "--lista"):
+        return show_list()
+    name, rest = args[0], args[1:]
+    opts, prog = (rest[:rest.index("--")], rest[rest.index("--") + 1:]) if "--" in rest else (rest, [])
+    goal = ""
+    if opts[:1] == ["--objetivo"] and len(opts) >= 2:
+        goal = opts[1]
+    elif opts:
+        sys.exit(f"nexus-agente: no entiendo «{' '.join(opts)}». Mira: nexus-agente --help")
+    if not prog:
+        prog = ["bash"]
+    interactive = sys.stdin.isatty()
+    r = api("POST", f"/agents/{name}/start", {"program": " ".join(prog)[:200], "goal": goal, "interactive": interactive})
+    if os.path.basename(prog[0]) == "claude" and "--mcp-config" not in prog:
+        prog = [prog[0], "--mcp-config", r["env"]["NEXUS_MCP_CONFIG"]] + prog[1:]
+    env = {"HOME": r["home"], "PATH": f"{r['home']}/.local/bin:/usr/local/bin:/usr/bin:/bin",
+           "LANG": os.environ.get("LANG", "es_ES.UTF-8"), "TERM": os.environ.get("TERM", "xterm-256color"),
+           "COLORTERM": os.environ.get("COLORTERM", "truecolor"), "NEXUS_IN_AGENT": "1", **r["env"]}
+    if os.environ.get("ANTHROPIC_API_KEY"):  # the person's own choice to give the agent a key
+        env["ANTHROPIC_API_KEY"] = os.environ["ANTHROPIC_API_KEY"]
+    folder = r["folder"].replace(r["home"], "~", 1)
+    sys.stderr.write(f"{ACC}◆{OFF} {BOLD}NEXUS · agente {r['name']}{OFF} {DIM}· {folder} · aislado · detener: app Agentes{OFF}\n")
+    p = subprocess.Popen(r["argv"] + prog, env=env, cwd="/")
+    signal.signal(signal.SIGINT, signal.SIG_IGN)  # Ctrl+C is for the agent program, which shares this terminal
+    api("POST", f"/agents/runs/{r['run']}/pid", {"pid": p.pid})
+    halted = {}
+    stop = threading.Event()
+
+    def watch() -> None:
+        while not stop.wait(1.0):
+            try:
+                s = api("GET", f"/agents/runs/{r['run']}", timeout=5)
+            except SystemExit:
+                continue
+            if s.get("status") == "halted":
+                halted["reason"] = s.get("reason") or ""
+                p.kill()
+                return
+    threading.Thread(target=watch, daemon=True).start()
+    code = p.wait()
+    stop.set()
+    try:
+        api("POST", f"/agents/runs/{r['run']}/end", {"code": code})
+    except SystemExit:
+        pass
+    if halted:
+        sys.stderr.write(f"\n{RED}◆ NEXUS ha detenido al agente{OFF}{': ' + halted['reason'] if halted['reason'] else ''}\n")
+        return 137
+    return code
+
+
+if __name__ == "__main__":
+    sys.exit(main())

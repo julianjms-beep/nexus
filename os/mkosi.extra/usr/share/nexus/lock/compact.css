@@ -1,0 +1,16 @@
+/* NEXUS lock and login screens on short screens (below 780 points: 1366x768, or 1440x900 at 125 %): the same design,
+   smaller, so the whole column fits. Loaded after style.css (and greeter.css) by nexus-lock and nexus-greeter. */
+#nexus-wordmark { margin-top: 10px; font-size: 17px; letter-spacing: 8px; }
+#clock-label { margin-top: 0; font-size: 118px; }
+#date-label { margin-top: -8px; font-size: 23px; }
+#nexus-avatar { margin-top: 26px; min-width: 74px; min-height: 74px; border-radius: 37px; font-size: 32px; }
+#nexus-user { margin-top: 10px; margin-bottom: 20px; font-size: 22px; }
+#input-field { min-height: 52px; font-size: 17px; }
+#unlock-button { min-width: 62px; min-height: 52px; font-size: 22px; }
+#nexus-pill { border-radius: 27px; }
+#input-field { border-radius: 27px 0 0 27px; }
+#unlock-button { border-radius: 0 27px 27px 0; }
+#nexus-cards { margin: 0 0 22px 22px; }
+.nexus-card { padding: 11px 16px 11px 11px; }
+.nexus-card-text { font-size: 14px; }
+#nexus-status { margin: 0 22px 22px 0; }

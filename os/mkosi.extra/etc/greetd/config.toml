@@ -1,0 +1,14 @@
+[terminal]
+vt = 1
+
+# Power-on: straight into the desktop — unless the person chose «Pedir la contraseña al encender» (Ajustes →
+# Privacidad y seguridad): then nexus-session --initial steps aside at once and the login screen below appears.
+[initial_session]
+command = "/usr/bin/nexus-session --initial"
+user = "nexus"
+
+# After logging out: the NEXUS login screen (same look as the lock screen), which starts the same session.
+# nexus-greeter-session falls back to the text greeter (tuigreet) if the graphical one cannot run.
+[default_session]
+command = "/usr/bin/nexus-greeter-session"
+user = "_greetd"

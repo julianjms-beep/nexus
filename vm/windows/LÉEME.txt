@@ -1,0 +1,64 @@
+NEXUS OS @VERSION@ — cómo usarlo en un PC con Windows
+=================================================
+
+NEXUS OS se abre como un programa más, dentro de una ventana. Windows sigue igual: no se borra ni se cambia nada.
+Funciona en PCs con procesador Intel o AMD (casi todos los PCs con Windows).
+
+ANTES, UNA SOLA VEZ: INSTALA VIRTUALBOX
+  VirtualBox es el programa gratuito (de Oracle) que abre NEXUS en una ventana.
+  1. Entra en https://www.virtualbox.org/wiki/Downloads y descarga el de «Windows hosts».
+  2. Instálalo con todo lo que propone (pide permiso de administrador del PC).
+     Si avisa de que la red se desconectará un momento, o de que falta «Python», acepta y sigue: no pasa nada.
+  Si haces doble clic en «Abrir NEXUS» sin tener VirtualBox, NEXUS te ofrece abrir esa página.
+
+ABRIRLO
+  1. Conecta el disco duro.
+  2. Doble clic en «Abrir NEXUS» (en esta carpeta).
+     La primera vez crea la máquina «NEXUS OS» en VirtualBox y te enseña un aviso: dale a Aceptar.
+  3. Espera a que arranque (la primera vez, y desde un disco externo, tarda unos minutos).
+
+CONTRASEÑA
+  nexus   (para desbloquear la pantalla y para las tareas de administrador)
+
+TECLAS ÚTILES (VirtualBox)
+  Ctrl derecho + F    pantalla completa (lo mismo para volver a la ventana)
+  Ctrl derecho        si el teclado se queda «dentro» de NEXUS, lo suelta y vuelves a Windows
+  El ratón pasa solo de Windows a NEXUS y al revés.
+
+NEXUS AI Y NEXUS SEARCH EN LA WEB
+  Necesitan tu clave de Claude: en NEXUS abre Ajustes → NEXUS AI y pégala.
+  Copiar en Windows y pegar en NEXUS todavía no funciona en esta versión: abre la página de tu clave
+  (console.anthropic.com) en el Navegador de NEXUS y cópiala desde allí, o escríbela.
+  Cada búsqueda en la web cuesta de 1 a 4 céntimos de tu saldo de Claude; repetirla en 30 minutos es gratis.
+
+CERRARLO
+  Apaga desde NEXUS, o cierra la ventana: NEXUS se apaga bien solo (tarda unos segundos).
+
+MUY IMPORTANTE
+  No desconectes el disco duro mientras NEXUS esté abierto: podrías estropear el sistema.
+  Cierra NEXUS primero y después quita el disco con «Expulsar» como siempre.
+
+QUÉ HAY EN ESTA CARPETA
+  Abrir NEXUS                el doble clic que abre NEXUS
+  Sistema\nexus-os.vdi       el sistema completo y todo lo que guardes dentro de NEXUS
+                             (ahora ocupa @SIZE_GB@ GB; crece con lo que guardes, hasta 32 GB)
+  Sistema\nexus-windows.ps1  lo que usa «Abrir NEXUS» por dentro
+  En el PC solo se guardan unos archivos pequeños de VirtualBox (en tu carpeta «VirtualBox VMs»).
+
+PASARLO AL PC (va mucho más rápido que desde el disco)
+  Copia la carpeta entera «Instalar NEXUS (Windows)» al PC y usa la copia: «Abrir NEXUS» lo detecta solo.
+  Usa siempre la misma copia: lo que guardes en una no aparece en la otra.
+
+SI ALGO FALLA
+  • Sale «VT-x», «AMD-V» o «virtualización»: está apagada en la BIOS/UEFI del PC. Enciéndela (se llama
+    «Intel VT-x», «Intel Virtualization Technology» o «AMD SVM») y vuelve a probar.
+  • Va muy lento y en la ventana sale una tortuga verde: Windows está usando Hyper-V. Funciona, pero más lento.
+  • NEXUS se ve demasiado pequeño o grande: Ajustes → Apariencia → Tamaño de la interfaz.
+
+ACTUALIZACIONES
+  Esta versión para PC todavía no recibe las actualizaciones de NEXUS (llegarán más adelante).
+  Las de Debian sí: en la Terminal, sudo apt update && sudo apt upgrade
+
+QUITARLO
+  En VirtualBox: clic derecho en «NEXUS OS» → Eliminar → «Eliminar solo» (o «Borrar todos los archivos» si también
+  quieres borrar el disco de NEXUS). Después puedes borrar esta carpeta y desinstalar VirtualBox. Windows no cambia.

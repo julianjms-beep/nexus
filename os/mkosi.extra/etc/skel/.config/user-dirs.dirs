@@ -1,0 +1,10 @@
+# NEXUS OS: the person's usual folders, in Spanish (the XDG standard way, so every app finds them: Ajustes → Fondo,
+# file pickers, browsers' downloads). No Escritorio/Plantillas/Público folders: those point at the home folder.
+XDG_DESKTOP_DIR="$HOME"
+XDG_DOWNLOAD_DIR="$HOME/Descargas"
+XDG_TEMPLATES_DIR="$HOME"
+XDG_PUBLICSHARE_DIR="$HOME"
+XDG_DOCUMENTS_DIR="$HOME/Documentos"
+XDG_MUSIC_DIR="$HOME/Música"
+XDG_PICTURES_DIR="$HOME/Imágenes"
+XDG_VIDEOS_DIR="$HOME/Vídeos"

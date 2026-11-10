@@ -1,0 +1,9 @@
+[Unit]
+Description=NEXUS automatic lock (locks the screen when the computer is left alone, and before sleep)
+PartOf=nexus-session.target
+After=nexus-sessiond.service
+
+[Service]
+ExecStart=/usr/bin/nexus-idle
+Restart=on-failure
+RestartSec=2

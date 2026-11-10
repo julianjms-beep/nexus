@@ -1,0 +1,11 @@
+[Unit]
+Description=NEXUS session daemon (apps, power after a human click, Engine relay)
+PartOf=nexus-session.target
+
+[Service]
+WorkingDirectory=/usr/lib/nexus/engine
+ExecStart=/usr/lib/nexus/node/bin/node --experimental-transform-types --disable-warning=ExperimentalWarning core/src/sessiond.ts
+Restart=always
+RestartSec=1
+# apps started from the session must survive a restart of this daemon
+KillMode=process

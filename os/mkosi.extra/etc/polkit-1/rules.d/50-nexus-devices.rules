@@ -1,0 +1,11 @@
+// NEXUS OS: the person at this computer (groups netdev or sudo) changes Wi-Fi and the power mode from the menu bar
+// without a password prompt. nexus-sessiond does it for them and runs as a user service, outside the login session,
+// so polkit's usual "active session" rule does not see it. Only these actions; everything else asks as usual.
+polkit.addRule(function (action, subject) {
+    var nm = action.id.indexOf("org.freedesktop.NetworkManager.") === 0;
+    var power = action.id === "org.freedesktop.UPower.PowerProfiles.switch-profile" ||
+                action.id === "net.hadess.PowerProfiles.switch-profile";
+    if ((nm || power) && (subject.isInGroup("netdev") || subject.isInGroup("sudo"))) {
+        return polkit.Result.YES;
+    }
+});

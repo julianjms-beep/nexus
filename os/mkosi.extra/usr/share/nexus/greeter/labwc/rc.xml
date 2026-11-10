@@ -1,0 +1,21 @@
+<?xml version="1.0"?>
+<!-- labwc for the NEXUS login screen (nexus-greeter-session): its only client is nexus-greeter.
+     labwc loads its default bindings (a terminal on Super+Enter, a root menu with Exit...) when rc.xml defines none,
+     so exactly one harmless key binding and one harmless mouse binding are defined here instead. -->
+<labwc_config>
+  <core>
+    <gap>0</gap>
+  </core>
+  <keyboard>
+    <keybind key="XF86WakeUp">
+      <action name="Execute" command="true" />
+    </keybind>
+  </keyboard>
+  <mouse>
+    <context name="Root">
+      <mousebind button="Middle" action="Press">
+        <action name="Execute" command="true" />
+      </mousebind>
+    </context>
+  </mouse>
+</labwc_config>

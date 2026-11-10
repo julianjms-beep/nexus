@@ -1,0 +1,78 @@
+#!/usr/bin/python3 -I
+"""Copy and paste between the Mac and NEXUS OS when it runs in the lab VM (vm/runner/main.swift).
+
+Text only, at most 1 MiB, over vsock: the VM's private channel to the Mac that runs it, nothing on the network.
+  * The Mac connects to port 7781 and sends what was copied there: it becomes the NEXUS clipboard (wl-copy).
+  * Every NEXUS copy (wl-paste --watch) is sent to the Mac on port 7780 (CID 2 = the host).
+The Mac side ignores text it already has, so one copy never bounces back and forth.
+Started by nexus-clipboard.service only inside a virtual machine.
+"""
+import socket
+import subprocess
+import sys
+import time
+
+HOST_CID = 2
+FROM_HOST, TO_HOST = 7781, 7780
+LIMIT = 1 << 20
+TEXT = "text/plain;charset=utf-8"
+
+
+def read_all(conn) -> bytes | None:
+    chunks, n = [], 0
+    while True:
+        b = conn.recv(65536)
+        if not b:
+            return b"".join(chunks)
+        n += len(b)
+        if n > LIMIT:
+            return None
+        chunks.append(b)
+
+
+def send() -> int:
+    """wl-paste --watch runs this with the new NEXUS clipboard on stdin."""
+    data = sys.stdin.buffer.read(LIMIT + 1)
+    if not data or len(data) > LIMIT:
+        return 0
+    try:
+        with socket.socket(socket.AF_VSOCK, socket.SOCK_STREAM) as s:
+            s.settimeout(3)
+            s.connect((HOST_CID, TO_HOST))
+            s.sendall(data)
+    except OSError:
+        pass  # the Mac side is not listening (older lab runner): nothing to share
+    return 0
+
+
+def serve() -> int:
+    watch = None
+    srv = socket.socket(socket.AF_VSOCK, socket.SOCK_STREAM)
+    srv.bind((socket.VMADDR_CID_ANY, FROM_HOST))
+    srv.listen(4)
+    srv.settimeout(2)
+    while True:
+        if watch is None or watch.poll() is not None:  # (re)start the NEXUS → Mac direction
+            watch = subprocess.Popen(["wl-paste", "--type", TEXT, "--watch", sys.argv[0], "--send"],
+                                     stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        try:
+            conn, (cid, _port) = srv.accept()
+        except TimeoutError:
+            continue
+        with conn:
+            if cid != HOST_CID:
+                continue
+            conn.settimeout(5)
+            try:
+                data = read_all(conn)
+            except OSError:
+                continue
+        if data:
+            # wl-copy stays in the background serving the text until something else is copied
+            subprocess.run(["wl-copy", "--type", TEXT], input=data,
+                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=5)
+            time.sleep(0.05)
+
+
+if __name__ == "__main__":
+    sys.exit(send() if sys.argv[1:] == ["--send"] else serve())

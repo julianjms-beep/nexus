@@ -1,0 +1,73 @@
+#!/usr/bin/python3 -I
+"""nexus-mcp: the NEXUS MCP server, over stdio, for an AI agent started with nexus-agente.
+
+The agent's MCP client (Claude Code, or any other) starts this program; each JSON-RPC message is forwarded to NEXUS
+(nexus-sessiond on 127.0.0.1) with the token of this run only. NEXUS decides what the agent may do (its capabilities),
+asks the person when it matters, and can halt the agent at any moment. Outside an agent there is no token: it refuses.
+"""
+import json
+import os
+import sys
+import threading
+import urllib.error
+import urllib.request
+
+URL = os.environ.get("NEXUS_MCP_URL", "http://127.0.0.1:7779/mcp")
+TOKEN = os.environ.get("NEXUS_AGENT_TOKEN", "")
+OPENER = urllib.request.build_opener(urllib.request.ProxyHandler({}))  # never through an HTTP proxy
+out_lock = threading.Lock()
+
+
+def emit(obj) -> None:
+    with out_lock:
+        sys.stdout.write(json.dumps(obj, ensure_ascii=False) + "\n")
+        sys.stdout.flush()
+
+
+def handle(line: str) -> None:
+    try:
+        msg = json.loads(line)
+    except ValueError:
+        emit({"jsonrpc": "2.0", "id": None, "error": {"code": -32700, "message": "Parse error"}})
+        return
+    mid = msg.get("id") if isinstance(msg, dict) else None
+    req = urllib.request.Request(URL, data=line.encode("utf-8"), method="POST", headers={
+        "Authorization": f"Bearer {TOKEN}", "Content-Type": "application/json", "Accept": "application/json, text/event-stream"})
+    try:
+        # long: a call may wait up to 5 minutes for the person's approval, or a command up to 5 minutes
+        with OPENER.open(req, timeout=720) as r:
+            body = r.read()
+            if r.status == 202 or not body:
+                return
+            emit(json.loads(body))
+    except urllib.error.HTTPError as e:
+        if mid is not None:
+            gone = e.code == 401
+            emit({"jsonrpc": "2.0", "id": mid, "error": {"code": -32001 if gone else -32603,
+                  "message": "NEXUS has halted this agent, or its run has ended." if gone else f"NEXUS error {e.code}"}})
+    except (urllib.error.URLError, TimeoutError, OSError, ValueError):
+        if mid is not None:
+            emit({"jsonrpc": "2.0", "id": mid, "error": {"code": -32603, "message": "Cannot reach NEXUS."}})
+
+
+def main() -> int:
+    if not TOKEN:
+        sys.stderr.write("nexus-mcp: arráncalo dentro de un agente: nexus-agente <agente> -- <programa>\n")
+        return 2
+    busy = []
+    for line in sys.stdin:
+        line = line.strip()
+        if line:
+            t = threading.Thread(target=handle, args=(line,), daemon=True)
+            t.start()
+            busy = [x for x in busy if x.is_alive()] + [t]
+    for t in busy:  # the client closed stdin: still deliver the answers already on their way
+        t.join(timeout=720)
+    return 0
+
+
+if __name__ == "__main__":
+    try:
+        sys.exit(main())
+    except KeyboardInterrupt:
+        sys.exit(130)

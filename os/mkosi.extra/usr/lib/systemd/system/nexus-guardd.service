@@ -1,0 +1,48 @@
+[Unit]
+Description=NEXUS Guard (firewall, remote access and passwords, for Ajustes → Privacidad y seguridad)
+Documentation=file:///usr/lib/nexus/engine/core/src/guardd.ts
+After=nexus-firewall.service
+
+[Service]
+Type=simple
+# root: it reads /etc/shadow, writes one sudoers rule, changes passwords and turns SSH on and off. It runs only six
+# fixed operations (core/src/guard.ts) and has no network port: only the unix socket /run/nexus-guard/guard.sock,
+# which only the group nexus-update (the desktop's people) can open.
+WorkingDirectory=/usr/lib/nexus/engine
+Environment=PATH=/usr/lib/nexus/node/bin:/usr/sbin:/usr/bin:/sbin:/bin
+ExecStart=/usr/lib/nexus/node/bin/node --experimental-transform-types --disable-warning=ExperimentalWarning core/src/guardd.ts
+Restart=on-failure
+RestartSec=3
+StateDirectory=nexus-guard
+StateDirectoryMode=0755
+RuntimeDirectory=nexus-guard
+RuntimeDirectoryMode=0710
+UMask=0077
+# Hardening: no network at all (unix sockets to talk to the desktop and to systemd; netlink to read the firewall),
+# the system read-only except /etc (passwords, the sudoers rule), no home folders, no devices.
+NoNewPrivileges=yes
+ProtectSystem=strict
+ReadWritePaths=/etc
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictAddressFamilies=AF_UNIX AF_NETLINK
+IPAddressDeny=any
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+CapabilityBoundingSet=CAP_NET_ADMIN CAP_CHOWN CAP_DAC_OVERRIDE CAP_DAC_READ_SEARCH CAP_FOWNER CAP_FSETID CAP_AUDIT_WRITE
+MemoryMax=256M
+TasksMax=64
+
+[Install]
+WantedBy=multi-user.target

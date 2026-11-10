@@ -1,0 +1,48 @@
+#!/bin/sh
+# Boot splash -> desktop without a black screen in between (the idea GNOME's display manager uses).
+#
+#   hold     (plymouth-quit-wait.service, which greetd waits for)
+#            Plymouth only *deactivates*: it stops drawing and lets go of the display, but its last picture stays on
+#            screen, so greetd starts the session at once and labwc takes the display over from that picture.
+#            greetd puts tty1 in text mode, and the kernel's text console (fbcon) would paint it black, so fbcon is
+#            unbound for these few hundred milliseconds.
+#   release  (plymouth-quit.service, in the background)
+#            Once labwc shows its own frames (its Wayland socket exists, plus 2 s), plymouth exits leaving its picture
+#            alone (--retain-splash; exiting earlier would remove the picture the screen still shows) and fbcon comes
+#            back for the other consoles (Ctrl+Alt+F2...). No session within 10 s (e.g. the text greeter fallback):
+#            fbcon comes back first and plymouth quits normally, so the text console is visible again.
+fbcon() {   # fbcon 0|1: unbind / bind the kernel's framebuffer text console
+  for v in /sys/class/vtconsole/vtcon*; do
+    grep -q "frame buffer" "$v/name" 2>/dev/null && echo "$1" > "$v/bind" 2>/dev/null
+  done
+  return 0
+}
+
+case "$1" in
+hold)
+  /usr/bin/plymouth --ping 2>/dev/null || exit 0
+  fbcon 0
+  exec /usr/bin/plymouth deactivate
+  ;;
+release)
+  if ! /usr/bin/plymouth --ping 2>/dev/null; then fbcon 1; exit 0; fi
+  i=0
+  while [ "$i" -lt 100 ]; do
+    for s in /run/user/*/wayland-[0-9]; do
+      if [ -S "$s" ]; then
+        sleep 2
+        /usr/bin/plymouth quit --retain-splash
+        fbcon 1
+        exit 0
+      fi
+    done
+    sleep 0.1
+    i=$((i + 1))
+  done
+  fbcon 1
+  exec /usr/bin/plymouth quit
+  ;;
+*)
+  echo "usage: $0 hold|release" >&2; exit 2
+  ;;
+esac

@@ -1,0 +1,699 @@
+diff -ruN -x b orig/include/common/scaled-scene-buffer.h labwc-0.8.3/include/common/scaled-scene-buffer.h
+--- orig/include/common/scaled-scene-buffer.h	2026-11-09 11:51:13
++++ labwc-0.8.3/include/common/scaled-scene-buffer.h	2026-11-09 12:00:01
+@@ -136,6 +136,14 @@
+  */
+ void scaled_scene_buffer_invalidate_sharing(void);
+ 
++/**
++ * scaled_scene_buffer_nexus_prepare - NEXUS: render the buffer now at this
++ * scale, even though its node has not been shown on an output yet (a window
++ * being snapshotted for its opening animation while it is still hidden).
++ */
++void scaled_scene_buffer_nexus_prepare(struct scaled_scene_buffer *self,
++	double scale);
++
+ /* Private */
+ struct scaled_scene_buffer_cache_entry {
+ 	struct wl_list link;   /* struct scaled_scene_buffer.cache */
+diff -ruN -x b orig/include/nexus-anim.h labwc-0.8.3/include/nexus-anim.h
+--- orig/include/nexus-anim.h	1970-01-01 01:00:00
++++ labwc-0.8.3/include/nexus-anim.h	2026-11-09 11:51:14
+@@ -0,0 +1,13 @@
++/* SPDX-License-Identifier: GPL-2.0-only */
++#ifndef LABWC_NEXUS_ANIM_H
++#define LABWC_NEXUS_ANIM_H
++#include <stdbool.h>
++
++struct view;
++
++/* NEXUS OS window animations (src/nexus-anim.c) */
++void nexus_anim_view_mapped(struct view *view);
++void nexus_anim_view_unmapping(struct view *view, bool client_request);
++void nexus_anim_view_forget(struct view *view);
++
++#endif /* LABWC_NEXUS_ANIM_H */
+diff -ruN -x b orig/include/view.h labwc-0.8.3/include/view.h
+--- orig/include/view.h	2026-11-09 11:51:13
++++ labwc-0.8.3/include/view.h	2026-11-09 11:51:14
+@@ -197,6 +197,7 @@
+ 
+ 	bool mapped;
+ 	bool been_mapped;
++	bool nexus_minimized;  /* NEXUS: unmapped by a minimize, so the next map is a restore */
+ 	bool ssd_enabled;
+ 	bool ssd_titlebar_hidden;
+ 	enum ssd_preference ssd_preference;
+diff -ruN -x b orig/src/common/scaled-scene-buffer.c labwc-0.8.3/src/common/scaled-scene-buffer.c
+--- orig/src/common/scaled-scene-buffer.c	2026-11-09 11:51:14
++++ labwc-0.8.3/src/common/scaled-scene-buffer.c	2026-11-09 12:00:01
+@@ -253,6 +253,15 @@
+ }
+ 
+ void
++scaled_scene_buffer_nexus_prepare(struct scaled_scene_buffer *self, double scale)
++{
++	assert(self);
++	if (scale > 0 && self->active_scale != scale) {
++		_update_buffer(self, scale);
++	}
++}
++
++void
+ scaled_scene_buffer_invalidate_sharing(void)
+ {
+ 	struct scaled_scene_buffer *scene_buffer, *tmp;
+diff -ruN -x b orig/src/meson.build labwc-0.8.3/src/meson.build
+--- orig/src/meson.build	2026-11-09 11:51:14
++++ labwc-0.8.3/src/meson.build	2026-11-09 11:51:14
+@@ -33,6 +33,7 @@
+   'window-rules.c',
+   'workspaces.c',
+   'xdg.c',
++  'nexus-anim.c',
+   'xdg-popup.c',
+ )
+ 
+diff -ruN -x b orig/src/nexus-anim.c labwc-0.8.3/src/nexus-anim.c
+--- orig/src/nexus-anim.c	1970-01-01 01:00:00
++++ labwc-0.8.3/src/nexus-anim.c	2026-11-09 12:02:11
+@@ -0,0 +1,574 @@
++// SPDX-License-Identifier: GPL-2.0-only
++/*
++ * NEXUS OS: window animations for labwc (open, close, minimize, restore).
++ *
++ * labwc shows and hides a window by enabling or disabling its scene tree (server-side decorations, drop shadow and the
++ * client's surfaces). To animate it, the whole tree is composed once into a single buffer at the output's scale (a
++ * "snapshot"), and that buffer is what moves, scales and fades; the real tree is shown again at the end of an opening
++ * animation. Every frame only changes the position, size and opacity of one scene buffer, which wlroots damages and
++ * renders like any other (also with the pixman renderer). Closing and minimizing take the snapshot just before the
++ * tree is hidden, so the window can disappear smoothly even when the client is already gone.
++ *
++ * Off when ~/.config/nexus/no-animations exists (NEXUS: Ajustes → Accesibilidad → Animaciones) or NEXUS_NO_ANIMATIONS
++ * is set. With ~/.config/nexus/anim-debug, every animation appends one line to $XDG_RUNTIME_DIR/nexus-anim.log
++ * (kind, duration, frames, longest gap between frames, snapshot time): how smooth it really was on this machine.
++ */
++#include <drm_fourcc.h>
++#include <math.h>
++#include <stdint.h>
++#include <stdio.h>
++#include <stdlib.h>
++#include <time.h>
++#include <unistd.h>
++#include <wlr/render/allocator.h>
++#include <wlr/render/interface.h>
++#include <wlr/render/pass.h>
++#include <wlr/render/wlr_renderer.h>
++#include <wlr/render/wlr_texture.h>
++#include <wlr/types/wlr_buffer.h>
++#include <wlr/types/wlr_output_layout.h>
++#include <wlr/types/wlr_scene.h>
++#include <wlr/util/log.h>
++#include "common/scaled-scene-buffer.h"
++#include "labwc.h"
++#include "nexus-anim.h"
++#include "node.h"
++#include "view.h"
++
++enum anim_kind { ANIM_OPEN, ANIM_CLOSE, ANIM_MINIMIZE, ANIM_RESTORE };
++
++struct anim {
++	struct wl_list link;
++	enum anim_kind kind;
++	struct view *view;               /* only while it must be shown again at the end (open, restore) */
++	struct wlr_scene_buffer *ghost;  /* the snapshot */
++	struct wl_event_source *idle;    /* opening: the snapshot is taken once the first frame is in the scene */
++	struct wlr_box box;              /* layout coordinates of the window (with its shadow) */
++	double cx0, cy0, s0, o0;         /* centre, scale and opacity at the start */
++	double cx1, cy1, s1, o1;         /* ... and at the end */
++	int64_t start_ms;
++	int duration_ms;
++	/* measurement (anim-debug) */
++	bool debug;
++	int frames;
++	int64_t last_ms;
++	int max_gap_ms;
++	int snapshot_ms;
++};
++
++static struct wl_list anims = { &anims, &anims };
++static struct wl_event_source *ticker;
++static struct server *the_server;
++
++static int64_t
++now_ms(void)
++{
++	struct timespec ts;
++	clock_gettime(CLOCK_MONOTONIC, &ts);
++	return (int64_t)ts.tv_sec * 1000 + ts.tv_nsec / 1000000;
++}
++
++static bool
++config_flag(const char *name)
++{
++	const char *home = getenv("HOME");
++	if (!home) {
++		return false;
++	}
++	char path[512];
++	snprintf(path, sizeof(path), "%s/.config/nexus/%s", home, name);
++	return access(path, F_OK) == 0;
++}
++
++static bool
++animations_enabled(void)
++{
++	return !getenv("NEXUS_NO_ANIMATIONS") && !config_flag("no-animations");
++}
++
++static void
++report(struct anim *a)
++{
++	static const char *names[] = { "open", "close", "minimize", "restore" };
++	const char *run = getenv("XDG_RUNTIME_DIR");
++	if (!run) {
++		return;
++	}
++	char path[512];
++	snprintf(path, sizeof(path), "%s/nexus-anim.log", run);
++	FILE *f = fopen(path, "a");
++	if (!f) {
++		return;
++	}
++	int64_t took = a->last_ms ? a->last_ms - a->start_ms : 0;
++	fprintf(f, "%s %dx%d planned=%dms took=%lldms frames=%d fps=%.0f max_gap=%dms snapshot=%dms\n",
++		names[a->kind], a->box.width, a->box.height, a->duration_ms, (long long)took, a->frames,
++		took > 0 ? a->frames * 1000.0 / took : 0.0, a->max_gap_ms, a->snapshot_ms);
++	fclose(f);
++}
++
++/* ------------------------------------------------------------------------------------------------ snapshot */
++
++static void
++node_size(struct wlr_scene_node *node, int *w, int *h)
++{
++	*w = *h = 0;
++	if (node->type == WLR_SCENE_NODE_RECT) {
++		struct wlr_scene_rect *r = wlr_scene_rect_from_node(node);
++		*w = r->width;
++		*h = r->height;
++	} else if (node->type == WLR_SCENE_NODE_BUFFER) {
++		struct wlr_scene_buffer *b = wlr_scene_buffer_from_node(node);
++		if (b->dst_width > 0 && b->dst_height > 0) {
++			*w = b->dst_width;
++			*h = b->dst_height;
++		} else if (b->buffer) {
++			bool rot = b->transform & WL_OUTPUT_TRANSFORM_90;
++			*w = rot ? b->buffer->height : b->buffer->width;
++			*h = rot ? b->buffer->width : b->buffer->height;
++		}
++	}
++}
++
++static bool
++visible_leaf(struct wlr_scene_node *node)
++{
++	if (node->type == WLR_SCENE_NODE_RECT) {
++		return wlr_scene_rect_from_node(node)->color[3] > 0.f; /* not the invisible resize edges */
++	}
++	return node->type == WLR_SCENE_NODE_BUFFER && wlr_scene_buffer_from_node(node)->buffer;
++}
++
++/*
++ * labwc draws the title text and the window buttons only once their node shows up on an output; a window that opens
++ * hidden (below) has not been on one yet, so draw them now at the output's scale for the snapshot.
++ */
++static void
++prepare_scaled(struct wlr_scene_node *node, bool root, double scale)
++{
++	if (!root && !node->enabled) {
++		return;
++	}
++	if (node->type == WLR_SCENE_NODE_TREE) {
++		struct wlr_scene_node *child;
++		wl_list_for_each(child, &wlr_scene_tree_from_node(node)->children, link) {
++			prepare_scaled(child, false, scale);
++		}
++		return;
++	}
++	struct node_descriptor *d = node->data;
++	if (node->type == WLR_SCENE_NODE_BUFFER && d && d->type == LAB_NODE_DESC_SCALED_SCENE_BUFFER && d->data) {
++		scaled_scene_buffer_nexus_prepare(d->data, scale);
++	}
++}
++
++/* bounding box (layout coordinates) of the enabled, visible leaves under node; the root itself may be disabled */
++static void
++extend_box(struct wlr_scene_node *node, int x, int y, bool root, int *x0, int *y0, int *x1, int *y1)
++{
++	if (!root && !node->enabled) {
++		return;
++	}
++	x += node->x;
++	y += node->y;
++	if (node->type == WLR_SCENE_NODE_TREE) {
++		struct wlr_scene_node *child;
++		wl_list_for_each(child, &wlr_scene_tree_from_node(node)->children, link) {
++			extend_box(child, x, y, false, x0, y0, x1, y1);
++		}
++		return;
++	}
++	int w, h;
++	node_size(node, &w, &h);
++	if (w <= 0 || h <= 0 || !visible_leaf(node)) {
++		return;
++	}
++	if (x < *x0) *x0 = x;
++	if (y < *y0) *y0 = y;
++	if (x + w > *x1) *x1 = x + w;
++	if (y + h > *y1) *y1 = y + h;
++}
++
++#define MAX_OWNED 128
++
++struct draw_ctx {
++	struct wlr_renderer *renderer;
++	struct wlr_render_pass *pass;
++	int bx, by;                              /* layout origin of the snapshot */
++	float scale;
++	struct wlr_texture *owned[MAX_OWNED];    /* textures made here: destroyed after the pass is submitted */
++	int n_owned;
++};
++
++static struct wlr_box
++scaled_box(struct draw_ctx *c, int x, int y, int w, int h)
++{
++	int ax = (int)lround((x - c->bx) * c->scale), ay = (int)lround((y - c->by) * c->scale);
++	int bx = (int)lround((x + w - c->bx) * c->scale), by = (int)lround((y + h - c->by) * c->scale);
++	return (struct wlr_box){ ax, ay, bx - ax, by - ay };
++}
++
++static void
++draw_node(struct draw_ctx *c, struct wlr_scene_node *node, int x, int y, bool root)
++{
++	if (!root && !node->enabled) {
++		return;
++	}
++	x += node->x;
++	y += node->y;
++	if (node->type == WLR_SCENE_NODE_TREE) {
++		struct wlr_scene_node *child;
++		wl_list_for_each(child, &wlr_scene_tree_from_node(node)->children, link) {
++			draw_node(c, child, x, y, false);
++		}
++		return;
++	}
++	int w, h;
++	node_size(node, &w, &h);
++	if (w <= 0 || h <= 0 || !visible_leaf(node)) {
++		return;
++	}
++	struct wlr_box dst = scaled_box(c, x, y, w, h);
++	if (dst.width <= 0 || dst.height <= 0) {
++		return;
++	}
++	if (node->type == WLR_SCENE_NODE_RECT) {
++		struct wlr_scene_rect *r = wlr_scene_rect_from_node(node);
++		wlr_render_pass_add_rect(c->pass, &(struct wlr_render_rect_options){
++			.box = dst,
++			.color = { r->color[0], r->color[1], r->color[2], r->color[3] },
++			.blend_mode = WLR_RENDER_BLEND_MODE_PREMULTIPLIED,
++		});
++		return;
++	}
++	struct wlr_scene_buffer *b = wlr_scene_buffer_from_node(node);
++	/* the texture the scene already has, else the client buffer's, else a new one */
++	struct wlr_texture *tex = b->texture;
++	if (!tex) {
++		struct wlr_client_buffer *cb = wlr_client_buffer_get(b->buffer);
++		if (cb && cb->texture) {
++			tex = cb->texture;
++		}
++	}
++	if (!tex && c->n_owned < MAX_OWNED) {
++		tex = wlr_texture_from_buffer(c->renderer, b->buffer);
++		if (tex) {
++			c->owned[c->n_owned++] = tex;
++		}
++	}
++	if (!tex) {
++		return;
++	}
++	float alpha = b->opacity;
++	wlr_render_pass_add_texture(c->pass, &(struct wlr_render_texture_options){
++		.texture = tex,
++		.src_box = b->src_box,
++		.dst_box = dst,
++		.alpha = &alpha,
++		.transform = b->transform,
++		.filter_mode = WLR_SCALE_FILTER_BILINEAR,
++		.blend_mode = WLR_RENDER_BLEND_MODE_PREMULTIPLIED,
++	});
++}
++
++static struct wlr_buffer *
++snapshot(struct view *view, struct wlr_box *out)
++{
++	struct server *server = view->server;
++	struct wlr_scene_node *root = &view->scene_tree->node;
++	int lx = 0, ly = 0;
++	wlr_scene_node_coords(root, &lx, &ly);
++	lx -= root->x; /* draw_node and extend_box add the node's own offset */
++	ly -= root->y;
++	float scale = view->output && view->output->wlr_output ? view->output->wlr_output->scale : 1.f;
++	prepare_scaled(root, true, scale);
++	int x0 = INT32_MAX, y0 = INT32_MAX, x1 = INT32_MIN, y1 = INT32_MIN;
++	extend_box(root, lx, ly, true, &x0, &y0, &x1, &y1);
++	if (x1 <= x0 || y1 <= y0) {
++		return NULL;
++	}
++	int bw = (int)ceil((x1 - x0) * scale), bh = (int)ceil((y1 - y0) * scale);
++	if (bw <= 0 || bh <= 0 || (int64_t)bw * bh > 40 * 1000 * 1000) {
++		return NULL;
++	}
++
++	const struct wlr_drm_format *fmt = NULL;
++	struct wlr_drm_format own_fmt = { 0 };
++	uint64_t linear = DRM_FORMAT_MOD_LINEAR;
++	if (server->renderer->impl->get_render_formats) {
++		const struct wlr_drm_format_set *set = server->renderer->impl->get_render_formats(server->renderer);
++		if (set) {
++			fmt = wlr_drm_format_set_get(set, DRM_FORMAT_ARGB8888);
++		}
++	}
++	if (!fmt) {
++		own_fmt.format = DRM_FORMAT_ARGB8888;
++		own_fmt.len = 1;
++		own_fmt.capacity = 1;
++		own_fmt.modifiers = &linear;
++		fmt = &own_fmt;
++	}
++	struct wlr_buffer *buf = wlr_allocator_create_buffer(server->allocator, bw, bh, fmt);
++	if (!buf) {
++		wlr_log(WLR_ERROR, "nexus-anim: cannot allocate a %dx%d snapshot", bw, bh);
++		return NULL;
++	}
++	struct wlr_render_pass *pass = wlr_renderer_begin_buffer_pass(server->renderer, buf, NULL);
++	if (!pass) {
++		wlr_buffer_drop(buf);
++		return NULL;
++	}
++	wlr_render_pass_add_rect(pass, &(struct wlr_render_rect_options){
++		.box = { 0, 0, bw, bh },
++		.color = { 0, 0, 0, 0 },
++		.blend_mode = WLR_RENDER_BLEND_MODE_NONE,
++	});
++	struct draw_ctx *c = calloc(1, sizeof(*c));
++	if (!c) {
++		wlr_render_pass_submit(pass);
++		wlr_buffer_drop(buf);
++		return NULL;
++	}
++	*c = (struct draw_ctx){ .renderer = server->renderer, .pass = pass, .bx = x0, .by = y0, .scale = scale };
++	draw_node(c, root, lx, ly, true);
++	bool ok = wlr_render_pass_submit(pass);
++	for (int i = 0; i < c->n_owned; i++) {
++		wlr_texture_destroy(c->owned[i]);
++	}
++	free(c);
++	if (!ok) {
++		wlr_buffer_drop(buf);
++		return NULL;
++	}
++	*out = (struct wlr_box){ x0, y0, x1 - x0, y1 - y0 };
++	return buf;
++}
++
++/* ------------------------------------------------------------------------------------------------ animation */
++
++static double
++ease_out_cubic(double t)
++{
++	double u = 1 - t;
++	return 1 - u * u * u;
++}
++
++static double
++ease_in_out_cubic(double t)
++{
++	return t < 0.5 ? 4 * t * t * t : 1 - pow(-2 * t + 2, 3) / 2;
++}
++
++static bool
++no_input(struct wlr_scene_buffer *buffer, double *sx, double *sy)
++{
++	return false;
++}
++
++static void
++place(struct anim *a, double cx, double cy, double s, double o)
++{
++	int w = (int)lround(a->box.width * s), h = (int)lround(a->box.height * s);
++	if (w < 1) w = 1;
++	if (h < 1) h = 1;
++	struct wlr_scene_node *n = &a->ghost->node;
++	int px = 0, py = 0;
++	if (n->parent) {
++		wlr_scene_node_coords(&n->parent->node, &px, &py);
++	}
++	wlr_scene_buffer_set_dest_size(a->ghost, w, h);
++	wlr_scene_node_set_position(n, (int)lround(cx - w / 2.0) - px, (int)lround(cy - h / 2.0) - py);
++	wlr_scene_buffer_set_opacity(a->ghost, (float)(o < 0 ? 0 : o > 1 ? 1 : o));
++}
++
++static void
++finish(struct anim *a)
++{
++	if (a->debug && a->ghost) {
++		report(a);
++	}
++	if (a->idle) {
++		wl_event_source_remove(a->idle);
++		a->idle = NULL;
++	}
++	if (a->view && (a->kind == ANIM_OPEN || a->kind == ANIM_RESTORE) && a->view->mapped && a->view->scene_tree) {
++		wlr_scene_node_set_enabled(&a->view->scene_tree->node, true);
++	}
++	if (a->ghost) {
++		wlr_scene_node_destroy(&a->ghost->node);
++	}
++	wl_list_remove(&a->link);
++	free(a);
++}
++
++static int
++tick(void *data)
++{
++	int64_t t = now_ms();
++	struct anim *a, *tmp;
++	wl_list_for_each_safe(a, tmp, &anims, link) {
++		if (!a->ghost) {
++			continue; /* waiting for its snapshot */
++		}
++		if (a->last_ms && t - a->last_ms > a->max_gap_ms) {
++			a->max_gap_ms = (int)(t - a->last_ms);
++		}
++		a->last_ms = t;
++		a->frames++;
++		double p = (double)(t - a->start_ms) / a->duration_ms;
++		if (p >= 1) {
++			finish(a);
++			continue;
++		}
++		if (p < 0) {
++			p = 0;
++		}
++		double e = (a->kind == ANIM_MINIMIZE || a->kind == ANIM_RESTORE) ? ease_in_out_cubic(p) : ease_out_cubic(p);
++		place(a, a->cx0 + (a->cx1 - a->cx0) * e, a->cy0 + (a->cy1 - a->cy0) * e,
++			a->s0 + (a->s1 - a->s0) * e, a->o0 + (a->o1 - a->o0) * e);
++	}
++	if (!wl_list_empty(&anims)) {
++		wl_event_source_timer_update(ticker, 7);
++	}
++	return 0;
++}
++
++static void
++run(void)
++{
++	if (!ticker) {
++		ticker = wl_event_loop_add_timer(the_server->wl_event_loop, tick, NULL);
++	}
++	if (ticker) {
++		wl_event_source_timer_update(ticker, 1);
++	}
++}
++
++/* the dock's centre on the window's output: where minimized windows go */
++static void
++dock_point(struct view *view, double *x, double *y)
++{
++	struct wlr_box ob = { 0 };
++	if (view->output && view->output->wlr_output) {
++		wlr_output_layout_get_box(view->server->output_layout, view->output->wlr_output, &ob);
++	}
++	*x = ob.x + ob.width / 2.0;
++	*y = ob.y + ob.height - 62;
++}
++
++static bool
++start(struct anim *a, struct view *view)
++{
++	struct wlr_box box;
++	int64_t t0 = now_ms();
++	struct wlr_buffer *buf = snapshot(view, &box);
++	a->snapshot_ms = (int)(now_ms() - t0);
++	a->debug = config_flag("anim-debug");
++	if (!buf) {
++		return false;
++	}
++	a->ghost = wlr_scene_buffer_create(view->scene_tree->node.parent, buf);
++	wlr_buffer_drop(buf);
++	if (!a->ghost) {
++		return false;
++	}
++	a->ghost->point_accepts_input = no_input;
++	wlr_scene_node_place_above(&a->ghost->node, &view->scene_tree->node);
++	a->box = box;
++	double cx = box.x + box.width / 2.0, cy = box.y + box.height / 2.0, dx, dy;
++	switch (a->kind) {
++	case ANIM_OPEN:
++		a->cx0 = a->cx1 = cx; a->cy0 = cy + 12; a->cy1 = cy;
++		a->s0 = 0.93; a->s1 = 1; a->o0 = 0; a->o1 = 1; a->duration_ms = 220;
++		break;
++	case ANIM_CLOSE:
++		a->cx0 = a->cx1 = cx; a->cy0 = cy; a->cy1 = cy + 8;
++		a->s0 = 1; a->s1 = 0.94; a->o0 = 1; a->o1 = 0; a->duration_ms = 170;
++		break;
++	case ANIM_MINIMIZE:
++		dock_point(view, &dx, &dy);
++		a->cx0 = cx; a->cy0 = cy; a->cx1 = dx; a->cy1 = dy;
++		a->s0 = 1; a->s1 = 0.06; a->o0 = 1; a->o1 = 0.1; a->duration_ms = 320;
++		break;
++	case ANIM_RESTORE:
++		dock_point(view, &dx, &dy);
++		a->cx0 = dx; a->cy0 = dy; a->cx1 = cx; a->cy1 = cy;
++		a->s0 = 0.06; a->s1 = 1; a->o0 = 0.1; a->o1 = 1; a->duration_ms = 320;
++		break;
++	}
++	a->start_ms = now_ms();
++	place(a, a->cx0, a->cy0, a->s0, a->o0);
++	run();
++	return true;
++}
++
++static void
++open_after_first_frame(void *data)
++{
++	struct anim *a = data;
++	a->idle = NULL;
++	if (!a->view || !a->view->mapped || !start(a, a->view)) {
++		finish(a); /* shows the window as it is */
++	}
++}
++
++/* ------------------------------------------------------------------------------------------------ hooks */
++
++void
++nexus_anim_view_mapped(struct view *view)
++{
++	the_server = view->server;
++	bool restore = view->nexus_minimized;
++	view->nexus_minimized = false;
++	nexus_anim_view_forget(view);
++	if (!animations_enabled() || view->fullscreen || !view->scene_tree) {
++		return;
++	}
++	struct anim *a = calloc(1, sizeof(*a));
++	if (!a) {
++		return;
++	}
++	a->kind = restore ? ANIM_RESTORE : ANIM_OPEN;
++	a->view = view;
++	wl_list_insert(&anims, &a->link);
++	/* hidden until the snapshot replaces it: the first frame reaches the scene after this commit */
++	wlr_scene_node_set_enabled(&view->scene_tree->node, false);
++	a->idle = wl_event_loop_add_idle(view->server->wl_event_loop, open_after_first_frame, a);
++	if (!a->idle) {
++		finish(a);
++	}
++}
++
++void
++nexus_anim_view_unmapping(struct view *view, bool client_request)
++{
++	the_server = view->server;
++	nexus_anim_view_forget(view);
++	bool minimizing = view->minimized && !client_request;
++	view->nexus_minimized = minimizing;
++	if ((!minimizing && !client_request) || !animations_enabled() || view->fullscreen || !view->scene_tree) {
++		return;
++	}
++	struct anim *a = calloc(1, sizeof(*a));
++	if (!a) {
++		return;
++	}
++	a->kind = minimizing ? ANIM_MINIMIZE : ANIM_CLOSE;
++	wl_list_insert(&anims, &a->link);
++	if (!start(a, view)) {
++		finish(a);
++		return;
++	}
++	a->view = NULL; /* the snapshot no longer needs the window */
++}
++
++void
++nexus_anim_view_forget(struct view *view)
++{
++	struct anim *a, *tmp;
++	wl_list_for_each_safe(a, tmp, &anims, link) {
++		if (a->view == view) {
++			finish(a);
++		}
++	}
++}
+diff -ruN -x b orig/src/view.c labwc-0.8.3/src/view.c
+--- orig/src/view.c	2026-11-09 11:51:14
++++ labwc-0.8.3/src/view.c	2026-11-09 11:51:14
+@@ -23,6 +23,7 @@
+ #include "snap.h"
+ #include "ssd.h"
+ #include "view.h"
++#include "nexus-anim.h"
+ #include "window-rules.h"
+ #include "wlr/util/log.h"
+ #include "workspaces.h"
+@@ -2502,6 +2503,7 @@
+ 	struct server *server = view->server;
+ 
+ 	snap_constraints_invalidate(view);
++	nexus_anim_view_forget(view);
+ 
+ 	if (view->mappable.connected) {
+ 		mappable_disconnect(&view->mappable);
+diff -ruN -x b orig/src/xdg.c labwc-0.8.3/src/xdg.c
+--- orig/src/xdg.c	2026-11-09 11:51:14
++++ labwc-0.8.3/src/xdg.c	2026-11-09 11:51:14
+@@ -12,6 +12,7 @@
+ #include "node.h"
+ #include "snap-constraints.h"
+ #include "view.h"
++#include "nexus-anim.h"
+ #include "view-impl-common.h"
+ #include "window-rules.h"
+ #include "workspaces.h"
+@@ -751,12 +752,14 @@
+ 
+ 	view_impl_map(view);
+ 	view->been_mapped = true;
++	nexus_anim_view_mapped(view);
+ }
+ 
+ static void
+ xdg_toplevel_view_unmap(struct view *view, bool client_request)
+ {
+ 	if (view->mapped) {
++		nexus_anim_view_unmapping(view, client_request);
+ 		view->mapped = false;
+ 		wlr_scene_node_set_enabled(&view->scene_tree->node, false);
+ 		view_impl_unmap(view);

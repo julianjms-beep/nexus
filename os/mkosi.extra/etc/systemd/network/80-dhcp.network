@@ -1,0 +1,9 @@
+[Match]
+Name=en* eth*
+
+[Network]
+DHCP=yes
+
+[DHCPv4]
+SendHostname=yes
+ClientIdentifier=mac

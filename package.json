@@ -1,0 +1,18 @@
+{
+  "name": "nexus-os",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --experimental-transform-types --test core/test/*.test.ts",
+    "serve": "node --experimental-transform-types core/src/server.ts",
+    "ui:dev": "cd ui && npm run dev",
+    "ui:build": "cd ui && npm run build",
+    "test:linux": "systemd-run --user --scope --quiet -p Delegate=yes -- node --experimental-transform-types --test core/test/*.test.ts"
+  },
+  "engines": {
+    "node": ">=24"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "1.6.0"
+  }
+}

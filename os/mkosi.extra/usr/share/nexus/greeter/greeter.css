@@ -1,0 +1,53 @@
+/* NEXUS login screen (nexus-greeter): loaded on top of the lock screen's style.css, so both screens look the same.
+   Only what the lock screen does not have: spacing of the always-visible pill, the wrong-password shake, other users,
+   and the restart / power off buttons. */
+
+#nexus-notes { margin-top: 10px; }
+#nexus-hint { margin-top: 10px; }
+
+#nexus-pill.shake { animation: nexus-shake 420ms ease-in-out; }
+@keyframes nexus-shake {
+  0%   { margin-left: 0;    margin-right: 0; }
+  20%  { margin-left: 28px; margin-right: 0; }
+  40%  { margin-left: 0;    margin-right: 28px; }
+  60%  { margin-left: 18px; margin-right: 0; }
+  80%  { margin-left: 0;    margin-right: 10px; }
+  100% { margin-left: 0;    margin-right: 0; }
+}
+
+#nexus-others { margin-top: 22px; }
+.nexus-other {
+  min-width: 42px;
+  min-height: 42px;
+  padding: 0;
+  border-radius: 21px;
+  background: none;
+  background-image: linear-gradient(135deg, rgba(166, 152, 255, 0.60), rgba(79, 141, 255, 0.60));
+  border: 1px solid rgba(255, 255, 255, 0.26);
+  box-shadow: none;
+  text-shadow: none;
+  outline-color: transparent;
+  color: #ffffff;
+  font-size: 17px;
+  font-weight: 500;
+}
+.nexus-other:hover { background-image: linear-gradient(135deg, #a698ff, #4f8dff); }
+
+#nexus-power { margin: 0 34px 32px 0; }
+.nexus-round {
+  min-width: 54px;
+  min-height: 54px;
+  padding: 0;
+  border-radius: 27px;
+  background: none;
+  background-color: rgba(165, 155, 255, 0.14);
+  border: 1px solid rgba(255, 255, 255, 0.20);
+  box-shadow: none;
+  text-shadow: none;
+  -gtk-icon-shadow: none;
+  outline-color: transparent;
+  color: #eef0ff;
+}
+.nexus-round:hover { background-color: rgba(165, 155, 255, 0.28); }
+.nexus-round:active { background-color: rgba(124, 108, 255, 0.40); }
+.nexus-round image { color: #eef0ff; -gtk-icon-shadow: none; }
