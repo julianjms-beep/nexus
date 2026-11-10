@@ -29,7 +29,8 @@ jobs:
         if: runner.os == 'Linux'
         run: sudo apt-get update -qq && sudo apt-get install -y -qq bubblewrap ripgrep
       - run: npm ci
-      - run: npm test
+      # (a time limit per test, so one that hangs on a CI machine is named instead of stalling the job)
+      - run: node --experimental-transform-types --disable-warning=ExperimentalWarning --test --test-timeout=180000 core/test/*.test.ts
       - name: nexus-agent builds as one file and its self-check passes
         run: |
           npx --yes esbuild@0.25.10 cli/nexus-agent.ts --bundle --platform=node --format=esm --target=node20 --outfile=cli/dist/nexus-agent.mjs

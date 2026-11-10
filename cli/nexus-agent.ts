@@ -14,7 +14,8 @@ import { createStandalone, liveRuns, approvalText, agentEnv, type Lang } from ".
 const VERSION = "0.1.0";
 const SELF = fs.realpathSync(fileURLToPath(import.meta.url));
 // from source (a .ts file) the bridge needs the engine's sources too; the published bundle is one file
-const SOURCES = /\.ts$/.test(SELF) ? [path.join(path.dirname(path.dirname(SELF)), "core", "src")] : [];
+// (and the repository's package.json: node reads it to know what kind of module a .ts file is)
+const SOURCES = /\.ts$/.test(SELF) ? [path.join(path.dirname(path.dirname(SELF)), "core", "src"), path.join(path.dirname(path.dirname(SELF)), "package.json")] : [];
 const tty = process.stderr.isTTY;
 const c = (code: string, s: string) => (tty ? `\x1b[${code}m${s}\x1b[0m` : s);
 const dim = (s: string) => c("38;5;245", s), bold = (s: string) => c("1", s), acc = (s: string) => c("38;5;141", s), red = (s: string) => c("38;5;203", s), green = (s: string) => c("38;5;78", s);

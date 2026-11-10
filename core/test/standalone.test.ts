@@ -138,7 +138,7 @@ test("a whole run, for real: the agent works, cannot take the keys (directly or 
   const { home, project } = fakeHome();
   const asked: Approval[] = [];
   const approver: Approver = async (ap) => { asked.push(ap); return /git push/.test(ap.title); };   // approve the push, deny the rest
-  const sa = await createStandalone({ cliPath: CLI, extraTools: [path.join(REPO, "core", "src")], home, approver, watch: false });
+  const sa = await createStandalone({ cliPath: CLI, extraTools: [path.join(REPO, "core", "src"), path.join(REPO, "package.json")], home, approver, watch: false });
   try {
     fs.writeFileSync(path.join(project, "agent.mjs"), AGENT);
     const a = sa.ensureAgent(project), r = sa.agents.startRun(a.id, { program: "node agent.mjs", interactive: false });
