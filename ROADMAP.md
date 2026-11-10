@@ -44,7 +44,7 @@ then widen.
 | First-run experience | Partial | First-boot assistant for release images (`core/src/setup.ts`). **Missing:** installer, data migration, sync, backups, help. |
 | AI | Partial | Assistant, agents, agencies, automations, MCP server, cost and token limits, model routing. **Missing:** local models, drift detection. Works without AI or internet: yes. |
 | Development | Done | git, compilers, Node, Python, terminal, VS Code in the image. **Missing:** containers, SDK. |
-| Quality | Partial | 357 automated tests, run on macOS and Linux on every change (`.github/workflows/test.yml`). **Missing:** real-hardware tests, fuzzing, long-run stability, performance benchmarks. |
+| Quality | Partial | 357 automated tests, run on every change on macOS 15 (all of them, with the real sandbox) and on Linux (all but the five suites that need a NEXUS lab machine) (`.github/workflows/test.yml`). Known: the job stalls on macOS 14, not yet investigated. **Missing:** real-hardware tests, fuzzing, long-run stability, performance benchmarks. |
 | Project | Partial | Public repository, this roadmap, [SECURITY.md](SECURITY.md). **Missing:** license, contribution guide, outside contributors. |
 
 ## What NEXUS will not build

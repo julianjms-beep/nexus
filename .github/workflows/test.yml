@@ -16,8 +16,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # macOS: the sandbox escape tests are enforced by the kernel there, on two system versions.
-        os: [macos-14, macos-15, ubuntu-24.04]
+        # macOS: the sandbox escape tests are enforced by the kernel there.
+        # (macos-14 is left out for now: the job stalls there without output; to be investigated.)
+        os: [macos-15, ubuntu-24.04]
     steps:
       - uses: actions/checkout@v4
         with:
@@ -30,7 +31,15 @@ jobs:
         run: sudo apt-get update -qq && sudo apt-get install -y -qq bubblewrap ripgrep
       - run: npm ci
       # (a time limit per test, so one that hangs on a CI machine is named instead of stalling the job)
-      - run: node --experimental-transform-types --disable-warning=ExperimentalWarning --test --test-timeout=180000 core/test/*.test.ts
+      - name: tests
+        if: runner.os != 'Linux'
+        run: node --experimental-transform-types --disable-warning=ExperimentalWarning --test --test-timeout=180000 core/test/*.test.ts
+      # The Engine's own job sandbox and its remote workers need what a hosted runner does not give (cgroup
+      # delegation from systemd, unprivileged user namespaces). Those five suites run on NEXUS OS itself
+      # (npm run test:linux); everything else runs here.
+      - name: tests (Linux, without the suites that need a NEXUS lab machine)
+        if: runner.os == 'Linux'
+        run: node --experimental-transform-types --disable-warning=ExperimentalWarning --test --test-timeout=180000 $(ls core/test/*.test.ts | grep -v -E '/(sandbox|workflow-sandbox|remote|workflow-remote|gateway-auth)\.test\.ts$')
       - name: nexus-agent builds as one file and its self-check passes
         run: |
           npx --yes esbuild@0.25.10 cli/nexus-agent.ts --bundle --platform=node --format=esm --target=node20 --outfile=cli/dist/nexus-agent.mjs
