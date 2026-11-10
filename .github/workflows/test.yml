@@ -1,0 +1,39 @@
+name: tests
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# Nothing here needs to write to the repository or use secrets.
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        # macOS: the sandbox escape tests are enforced by the kernel there, on two system versions.
+        os: [macos-14, macos-15, ubuntu-24.04]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: bubblewrap (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq bubblewrap ripgrep
+      - run: npm ci
+      - run: npm test
+      - name: nexus-agent builds as one file and its self-check passes
+        run: |
+          npx --yes esbuild@0.25.10 cli/nexus-agent.ts --bundle --platform=node --format=esm --target=node20 --outfile=cli/dist/nexus-agent.mjs
+          node cli/dist/nexus-agent.mjs --version
+      - name: nexus-agent doctor (macOS, the real sandbox)
+        if: runner.os == 'macOS'
+        run: NEXUS_LANG=en node cli/dist/nexus-agent.mjs doctor

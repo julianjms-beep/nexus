@@ -85,5 +85,6 @@ Node 24 for development (the engine runs TypeScript directly); Node 20 or newer 
 - **Secrets stay where they belong.** API keys live with the service that uses them and are never sent back to the
   desktop, written to logs or put on a command line.
 
-Known limits are written down, not hidden: see [cli/README.md](cli/README.md#limits-you-should-know). If you find a
-way through, please open an issue.
+Known limits are written down, not hidden: the threat model and what does not hold yet are in
+[SECURITY.md](SECURITY.md), which also says how to report a way through. Where the project stands and what comes
+next: [ROADMAP.md](ROADMAP.md).
