@@ -18,6 +18,7 @@ import { spawn } from "node:child_process";
 import { randomBytes, timingSafeEqual } from "node:crypto";
 import { Agents, type Approval, type AgentPlatform } from "./agentd.ts";
 import { detectPlatform, sandboxPath } from "./agent-platform.ts";
+import { startNetFilter, proxyEnv, DEFAULT_HOSTS, checkHost, type NetFilter } from "./netfilter.ts";
 
 export type Lang = "en" | "es";
 /** true = approved, false = denied, null = this computer cannot show a dialog (the request stays pending). */
@@ -78,7 +79,11 @@ export type StandaloneOptions = {
   stateDir?: string;
   lang?: Lang;
   approver?: Approver;
-  platform?: AgentPlatform & { tools: string[] };
+  platform?: AgentPlatform & { tools: string[]; filtered?: boolean };
+  /** the agent's network: "filtered" (default: only the sites on the list, through NEXUS's proxy) or "open" */
+  network?: "filtered" | "open";
+  /** more sites for the list (host names; a leading dot = everything under it) */
+  allowHosts?: string[];
   /** more read-only folders for the sandbox (running from source: where the .ts files are) */
   extraTools?: string[];
   /** the person's Anthropic API key, if they use one: it stays in this process */
@@ -97,8 +102,10 @@ export async function createStandalone(o: StandaloneOptions) {
   const node = o.nodePath ?? process.execPath;
   const dataDir = path.join(stateDir, "data"), runDir = path.join(stateDir, "run");
   for (const d of [stateDir, dataDir, runDir]) fs.mkdirSync(d, { recursive: true, mode: 0o700 });
-  const platform = o.platform ?? detectPlatform({ home, commandHome: path.join(dataDir, "cmd-home"), extraTools: [path.dirname(path.dirname(node)), path.dirname(o.cliPath), ...(o.extraTools ?? [])] });
-  if (!platform) throw new Error(lang === "es" ? "nexus-agent funciona en Linux y en macOS" : "nexus-agent runs on Linux and macOS");
+  const allow = [...DEFAULT_HOSTS, ...(o.allowHosts ?? []).map(checkHost)];
+  const filter: NetFilter | null = o.network === "open" || o.platform ? null : await startNetFilter({ allow });
+  const platform = o.platform ?? detectPlatform({ home, commandHome: path.join(dataDir, "cmd-home"), ...(filter ? { filter: { env: proxyEnv(filter.port) } } : {}), extraTools: [path.dirname(path.dirname(node)), path.dirname(o.cliPath), ...(o.extraTools ?? [])] });
+  if (!platform) { await filter?.close(); throw new Error(lang === "es" ? "nexus-agent funciona en Linux y en macOS" : "nexus-agent runs on Linux and macOS"); }
   const approver = o.approver ?? dialogApprover();
   const admin = randomBytes(24).toString("base64url");
   let port = 0;
@@ -164,6 +171,8 @@ export async function createStandalone(o: StandaloneOptions) {
 
   return {
     agents, platform, port, admin, home, stateDir, runFile,
+    /** The network filter, or null when the network is open. `enforced`: the sandbox leaves no way around it. */
+    net: filter ? { port: filter.port, env: proxyEnv(filter.port), blocked: filter.blocked, allowed: filter.allowed, enforced: platform.filtered === true, hosts: allow } : null,
     /** The agent profile of a project folder (made on first use: read, write and run there, nothing else). */
     ensureAgent(folder: string, x: { read?: string[]; maxUsd?: number; check?: string } = {}) {
       const real = fs.realpathSync(folder);
@@ -182,6 +191,7 @@ export async function createStandalone(o: StandaloneOptions) {
     publish(folder: string) { fs.writeFileSync(runFile, JSON.stringify({ pid: process.pid, port, admin, folder, started: new Date().toISOString() }), { mode: 0o600 }); },
     async close() {
       agents.stop();
+      await filter?.close();
       fs.rmSync(runFile, { force: true });
       server.closeAllConnections();
       await new Promise<void>((r) => server.close(() => r()));
@@ -206,10 +216,10 @@ export function liveRuns(stateDir: string): { pid: number; port: number; admin: 
 }
 
 /** The environment of the agent program: its own home, the person's tools, the run's token — nothing else of theirs. */
-export function agentEnv(home: string, tools: string[], agentHome: string, runEnv: Record<string, string>): NodeJS.ProcessEnv {
+export function agentEnv(home: string, tools: string[], agentHome: string, runEnv: Record<string, string>, netEnv: Record<string, string> = {}): NodeJS.ProcessEnv {
   const e: NodeJS.ProcessEnv = {
     HOME: agentHome, PATH: sandboxPath(home, tools), LANG: process.env.LANG ?? "en_US.UTF-8", TERM: process.env.TERM ?? "xterm-256color",
-    NEXUS_IN_AGENT: "1", ...runEnv,
+    NEXUS_IN_AGENT: "1", ...netEnv, ...runEnv,
   };
   for (const k of ["COLORTERM", "TZ", "LC_ALL", "LC_CTYPE", "TERM_PROGRAM", "NO_COLOR"]) if (process.env[k]) e[k] = process.env[k];
   if (process.platform === "darwin") e.TMPDIR = path.join(agentHome, "tmp");

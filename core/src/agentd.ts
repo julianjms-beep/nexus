@@ -24,7 +24,7 @@ import { createHash, randomBytes } from "node:crypto";
 import type http from "node:http";
 import { sandboxArgv } from "./automations.ts";
 import { localServers } from "./ports.ts";
-import { classifyCommand } from "./risk.ts";
+import { classifyCommand, GIT_SAFE_ENV, gitRepoRisks } from "./risk.ts";
 import { resolveReal, isInside } from "./security.ts";
 
 export const AGENT_LIMITS = {
@@ -93,7 +93,7 @@ export type AgentsOptions = {
   review?: (diff: string, role: string) => Promise<Verdict>;   // NEXUS AI (the Engine) reviews a diff as one role
   proposeAutomation?: (draft: Record<string, unknown>) => void;
   lastFailure?: (folder: string) => { name: string; at: string; output: string } | null;
-  spawnFn?: (argv: string[]) => ChildProcess;              // tests
+  spawnFn?: (argv: string[], env?: NodeJS.ProcessEnv) => ChildProcess;   // tests
   hasSandbox?: () => boolean;
   fetchFn?: typeof fetch;                                  // tests (the LLM proxy)
   /** Sends an agent's Claude request with the person's key (the Engine adds it). Without it, only the agent's own key works. */
@@ -642,16 +642,33 @@ export class Agents {
       argv = sandboxArgv(command, root, this.o.home, this.o.runtimeDirs, keys);
       argv[argv.indexOf("--chdir") + 1] = cwd; // resolved inside the sandbox, where only `root` exists
     }
-    const env = this.o.platform?.env?.() ?? cleanEnv(this.o.home);
+    // with the keys in reach, git runs nothing the repository names (hooks, core.sshCommand…): see risk.ts
+    const env = { ...(this.o.platform?.env?.() ?? cleanEnv(this.o.home)), ...(keys ? GIT_SAFE_ENV : {}) };
     return new Promise((res) => {
       const t0 = Date.now(); let out = ""; let killed = false;
-      const child = (this.o.spawnFn ?? ((v: string[]) => spawn(v[0], v.slice(1), { stdio: ["ignore", "pipe", "pipe"], env, detached: true })))(argv);
+      const child = (this.o.spawnFn ?? ((v: string[], e?: NodeJS.ProcessEnv) => spawn(v[0], v.slice(1), { stdio: ["ignore", "pipe", "pipe"], env: e, detached: true })))(argv, env);
       const add = (d: Buffer) => { out += d.toString("utf8"); if (out.length > 2 * AGENT_LIMITS.outputChars) out = out.slice(-AGENT_LIMITS.outputChars); };
       child.stdout?.on("data", add); child.stderr?.on("data", add);
       const timer = setTimeout(() => { killed = true; try { process.kill(-(child.pid ?? 0), "SIGKILL"); } catch { child.kill("SIGKILL"); } }, ms);
       child.on("error", (e) => { out += String(e.message); });
       child.on("close", (code) => { clearTimeout(timer); res({ code, output: out.slice(-AGENT_LIMITS.outputChars), ms: Date.now() - t0, killed }); });
     });
+  }
+
+  /** The repository `cwd` is in (not above `root`): its config's risky names and its real hooks. Read here, never run. */
+  private gitRisks(cwd: string, root: string): { off: string[]; warn: string[] } {
+    try {
+      for (let d = cwd; isInside(d, root) || d === root; d = path.dirname(d)) {
+        let g = path.join(d, ".git");
+        if (!fs.existsSync(g)) { if (d === root || d === path.dirname(d)) break; continue; }
+        if (fs.statSync(g).isFile()) { const m = /^gitdir:\s*(.+)$/m.exec(fs.readFileSync(g, "utf8")); if (!m) break; g = path.resolve(d, m[1].trim()); }
+        let config = ""; try { config = fs.readFileSync(path.join(g, "config"), "utf8").slice(0, 200_000); } catch { /* none */ }
+        let hooks: string[] = [];
+        try { hooks = fs.readdirSync(path.join(g, "hooks")).filter((n) => !n.endsWith(".sample") && (() => { try { const st = fs.statSync(path.join(g, "hooks", n)); return st.isFile() && (st.mode & 0o111) !== 0; } catch { return false; } })()).slice(0, 20); } catch { /* none */ }
+        return gitRepoRisks(config, hooks);
+      }
+    } catch { /* unreadable: nothing to report */ }
+    return { off: [], warn: [] };
   }
 
   // ------------------------------------------------------------------------------------------------ self-healing checks
@@ -828,7 +845,12 @@ export class Agents {
             const auto = what === "commit" && cn?.available && cn.ok; // a local commit approved by the committee runs without asking
             if (!auto) {
               const en = this.o.lang === "en", why = en ? risk.reasonEn : risk.reason;
-              const yes = await this.ask(c, cmd.slice(0, 160), `${why[0].toUpperCase()}${why.slice(1)}. ${en ? "Folder" : "Carpeta"}: ${tilde(cwd, h)}.`, risk.rule ?? "ask", cn?.available ? cn : undefined);
+              // what this repository would run on its own during a git command (the agent may have written it)
+              const gr = /\bgit\b/.test(cmd) ? this.gitRisks(cwd, this.rootOf(c.agent, cwd, ["exec"])) : { off: [], warn: [] };
+              const gitNote = (gr.warn.length ? (en ? ` WARNING: this repository's git configuration runs or redirects on its own and NEXUS cannot switch it off: ${gr.warn.slice(0, 6).join(", ")}. Approve only if you set that up.`
+                                                   : ` ATENCIÓN: la configuración de git de este repositorio ejecuta o redirige por su cuenta y NEXUS no puede desactivarlo: ${gr.warn.slice(0, 6).join(", ")}. Aprueba solo si lo pusiste tú.`) : "")
+                + (gr.off.length ? (en ? ` Switched off for this command: ${gr.off.slice(0, 6).join(", ")}.` : ` Desactivado para este comando: ${gr.off.slice(0, 6).join(", ")}.`) : "");
+              const yes = await this.ask(c, cmd.slice(0, 160), `${why[0].toUpperCase()}${why.slice(1)}. ${en ? "Folder" : "Carpeta"}: ${tilde(cwd, h)}.${gitNote}`, gr.warn.length ? "git-config" : risk.rule ?? "ask", cn?.available ? cn : undefined);
               if (!yes) return { text: "The person did not approve this command. Do not retry it; ask them or choose another way.", isError: true };
               approved = true;
             }

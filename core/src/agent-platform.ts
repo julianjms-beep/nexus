@@ -59,6 +59,8 @@ export type MacProfileSpec = {
   home: string; agentHome: string; folder: string; read: string[]; write: string[]; tools: string[];
   /** the person approved this command: their SSH folder, SSH agent and Keychain are reachable */
   keys?: boolean; sshAuthSock?: string;
+  /** the network goes only to this computer itself (where NEXUS's filter listens): no direct way out, no DNS */
+  filtered?: boolean;
 };
 /** The Seatbelt profile. Later rules win over earlier ones, so each block denies broadly and then opens the little it needs. */
 export function macProfile(o: MacProfileSpec): string {
@@ -93,7 +95,11 @@ export function macProfile(o: MacProfileSpec): string {
     "(allow signal (target same-sandbox))",
     "; ---- no local sockets of other programs (SSH agent, Docker…); the name service is the exception",
     "(deny network-outbound (remote unix-socket))",
-    `(allow network-outbound (remote unix-socket (path-literal "/private/var/run/mDNSResponder")))`,
+    o.filtered
+      // filtered: nothing leaves directly, not even a name lookup (names are a way to leak too); only this computer's
+      // own ports are reachable, and that is where NEXUS's proxy decides which sites get through
+      ? `(deny network-outbound)\n(allow network-outbound (remote ip "localhost:*"))`
+      : `(allow network-outbound (remote unix-socket (path-literal "/private/var/run/mDNSResponder")))`,
     sock ? `(allow network-outbound (remote unix-socket (path-literal ${sbq(sock)})))\n(allow file-read* file-write* (literal ${sbq(sock)}))` : "",
   ].filter(Boolean).join("\n") + "\n";
 }
@@ -107,6 +113,9 @@ export type PlatformOptions = {
   extraTools?: string[];
   runtimeDirs?: string[];
   env?: NodeJS.ProcessEnv;
+  /** NEXUS's network filter is running (core/src/netfilter.ts): the sandbox leaves the agent no other way out, and
+   *  these variables point its programs at the filter. A command the person approved keeps the direct network. */
+  filter?: { env: Record<string, string> };
 };
 function baseEnv(o: PlatformOptions, home: string, tools: string[]): NodeJS.ProcessEnv {
   const src = o.env ?? process.env;
@@ -115,25 +124,25 @@ function baseEnv(o: PlatformOptions, home: string, tools: string[]): NodeJS.Proc
   return e;
 }
 
-export function macPlatform(o: PlatformOptions): AgentPlatform & { tools: string[] } {
+export function macPlatform(o: PlatformOptions): AgentPlatform & { tools: string[]; filtered: boolean } {
   const tools = toolDirs(o.home, o.extraTools);
   const sshAuthSock = (o.env ?? process.env).SSH_AUTH_SOCK;
   const ready = (home: string) => { fs.mkdirSync(path.join(home, "tmp"), { recursive: true, mode: 0o700 }); return real(home); };
   return {
-    tools,
+    tools, filtered: !!o.filter,
     available: () => fs.existsSync(SANDBOX_EXEC),
     agent: (s: AgentSandboxSpec) => {
       const home = ready(s.agentHome);
-      return { argv: [SANDBOX_EXEC, "-p", macProfile({ home: o.home, agentHome: home, folder: s.folder, read: s.read, write: s.write, tools })], home };
+      return { argv: [SANDBOX_EXEC, "-p", macProfile({ home: o.home, agentHome: home, folder: s.folder, read: s.read, write: s.write, tools, filtered: !!o.filter })], home };
     },
     command: (command, cwd, root, keys) => {
       const home = ready(o.commandHome);
-      const profile = macProfile({ home: o.home, agentHome: home, folder: root, read: [], write: [], tools, keys, sshAuthSock });
+      const profile = macProfile({ home: o.home, agentHome: home, folder: root, read: [], write: [], tools, keys, sshAuthSock, filtered: !!o.filter && !keys });
       return [SANDBOX_EXEC, "-p", profile, "/bin/sh", "-c", `cd ${shq(cwd)} && ${command}`];
     },
     env: () => {
       const home = ready(o.commandHome);
-      return { ...baseEnv(o, home, tools), TMPDIR: path.join(home, "tmp"), ...(sshAuthSock ? { SSH_AUTH_SOCK: sshAuthSock } : {}) };
+      return { ...baseEnv(o, home, tools), TMPDIR: path.join(home, "tmp"), ...(sshAuthSock ? { SSH_AUTH_SOCK: sshAuthSock } : {}), ...(o.filter?.env ?? {}) };
     },
   };
 }
@@ -149,7 +158,7 @@ export function bubblewrapWorks(): boolean {
   }
   return bwrapWorks;
 }
-export function linuxPlatform(o: PlatformOptions): AgentPlatform & { tools: string[] } {
+export function linuxPlatform(o: PlatformOptions): AgentPlatform & { tools: string[]; filtered: boolean } {
   const home = real(o.home), tools = toolDirs(o.home, o.extraTools);
   const runtimeDirs = o.runtimeDirs ?? ["/run/user", "/run/dbus"];
   // the tool folders inside the home come back read-only after the home itself has been replaced
@@ -160,7 +169,9 @@ export function linuxPlatform(o: PlatformOptions): AgentPlatform & { tools: stri
   };
   const bound = (argv: string[]) => argv.filter((_, i) => argv[i - 2] === "--ro-bind" || argv[i - 2] === "--bind");
   return {
-    tools,
+    // Linux: the filter is not enforced yet (it needs a bridge into the agent's own network namespace); the variables
+    // still point well-behaved programs at it, but a program can ignore them. `filtered` says so honestly.
+    tools, filtered: false,
     available: bubblewrapWorks,
     agent: (s: AgentSandboxSpec) => { const a = agentSandboxArgv({ ...s, runtimeDirs }); return { argv: withTools(a, bound(a)), home: s.home }; },
     command: (command, cwd, root, keys) => {
@@ -168,11 +179,11 @@ export function linuxPlatform(o: PlatformOptions): AgentPlatform & { tools: stri
       a[a.indexOf("--chdir") + 1] = cwd;
       return withTools(a, bound(a));
     },
-    env: () => baseEnv(o, o.home, tools),
+    env: () => ({ ...baseEnv(o, o.home, tools), ...(o.filter?.env ?? {}) }),
   };
 }
 
 /** The platform of this computer, or null when nexus-agent cannot isolate programs here. */
-export function detectPlatform(o: PlatformOptions, platform: string = process.platform): (AgentPlatform & { tools: string[] }) | null {
+export function detectPlatform(o: PlatformOptions, platform: string = process.platform): (AgentPlatform & { tools: string[]; filtered: boolean }) | null {
   return platform === "darwin" ? macPlatform(o) : platform === "linux" ? linuxPlatform(o) : null;
 }

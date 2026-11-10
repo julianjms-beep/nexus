@@ -51,3 +51,43 @@ export function classifyCommand(command: string): Risk {
   for (const [rule, re, reason, reasonEn] of ASK) if (re.test(c)) return { level: "ask", reason, reasonEn, rule };
   return { level: "safe", reason: "se ejecuta aislado: solo puede escribir en la carpeta del proyecto", reasonEn: "runs isolated: it can only write in the project folder" };
 }
+
+// ---- git, when a command runs with the person's keys (they approved it)
+// The repository belongs to the agent's working folder, so its .git/config and hooks may have been written by the
+// agent. git runs programs named there (hooks, core.sshCommand, core.fsmonitor…): approving "git push" must not mean
+// approving those. This environment switches off what can be switched off from outside the repository; it wins over
+// the repository's own configuration (GIT_CONFIG_* entries count as command-line -c options).
+export const GIT_SAFE_ENV: Record<string, string> = {
+  GIT_CONFIG_COUNT: "4",
+  GIT_CONFIG_KEY_0: "core.hooksPath", GIT_CONFIG_VALUE_0: "/dev/null",
+  GIT_CONFIG_KEY_1: "core.fsmonitor", GIT_CONFIG_VALUE_1: "false",
+  GIT_CONFIG_KEY_2: "protocol.ext.allow", GIT_CONFIG_VALUE_2: "never",
+  GIT_CONFIG_KEY_3: "core.pager", GIT_CONFIG_VALUE_3: "cat",
+  GIT_SSH_COMMAND: "ssh", GIT_EDITOR: "true", GIT_TERMINAL_PROMPT: "0", GIT_ASKPASS: "true",
+};
+const GIT_OFF = [/^core\.sshcommand$/, /^core\.hookspath$/, /^core\.fsmonitor$/, /^core\.pager$/, /^core\.editor$/, /^protocol\.ext\.allow$/];
+const GIT_WARN = [/^credential(\..*)?\.helper$/, /^url\..*\.(pushinsteadof|insteadof)$/, /^remote\..*\.(receivepack|uploadpack|proxy|vcs|pushurl)$/, /^filter\..*\.(clean|smudge|process)$/,
+  /^diff\..*\.(command|textconv)$/, /^merge\..*\.driver$/, /^include\.path$/, /^includeif\..*\.path$/, /^core\.gitproxy$/, /^core\.askpass$/, /^gpg(\..*)?\.program$/, /^sendemail\./];
+/** The names set in a git config file, as "section.subsection.key" in lowercase (subsection kept as written). */
+export function gitConfigKeys(text: string): string[] {
+  const out: string[] = []; let section = "";
+  for (const raw of String(text ?? "").split("\n")) {
+    const l = raw.trim();
+    if (!l || l.startsWith("#") || l.startsWith(";")) continue;
+    const m = /^\[\s*([A-Za-z0-9.-]+)(?:\s+"((?:[^"\\]|\\.)*)")?\s*\]/.exec(l);
+    if (m) { section = m[1].toLowerCase() + (m[2] !== undefined ? "." + m[2] : ""); const rest = l.slice(m[0].length).trim(); if (!rest) continue; const k = /^([A-Za-z][A-Za-z0-9-]*)/.exec(rest); if (k && section) out.push(`${section}.${k[1].toLowerCase()}`); continue; }
+    const k = /^([A-Za-z][A-Za-z0-9-]*)\s*(=|$)/.exec(l);
+    if (k && section) out.push(`${section}.${k[1].toLowerCase()}`);
+  }
+  return [...new Set(out)];
+}
+/** What in a repository would run programs during a git command: `off` is switched off by GIT_SAFE_ENV, `warn` is not
+ *  (the person must see it before approving). `hooks`: the executable files in .git/hooks that are not samples. */
+export function gitRepoRisks(config: string, hooks: string[]): { off: string[]; warn: string[] } {
+  const keys = gitConfigKeys(config), low = (k: string) => k.toLowerCase();
+  const off = keys.filter((k) => GIT_OFF.some((r) => r.test(low(k))));
+  const warn = keys.filter((k) => GIT_WARN.some((r) => r.test(low(k))));
+  for (const h of hooks) off.push(`hook ${h}`);
+  return { off, warn };
+}
+

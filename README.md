@@ -26,7 +26,8 @@ nexus-agent doctor           # watch the sandbox block real escape attempts on y
 
 The agent gets the project, a private home and your tools. It does not get your SSH keys, tokens, the rest of your
 home, other disks, the clipboard or other apps. `git push`, `rm -r`, `DROP TABLE` or a deploy open a dialog whose
-default button is "Deny". Your API key never enters the sandbox. See [cli/README.md](cli/README.md) for how it
+default button is "Deny". Its network reaches only a short list of sites (macOS; Linux soon). Your API key never
+enters the sandbox. See [cli/README.md](cli/README.md) for how it
 works and for its limits.
 
 ## What is in the operating system

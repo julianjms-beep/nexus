@@ -7,7 +7,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import readline from "node:readline";
-import { spawn, spawnSync } from "node:child_process";
+import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { createStandalone, liveRuns, approvalText, agentEnv, type Lang } from "../core/src/standalone.ts";
 
@@ -34,6 +34,8 @@ Options (before --):
   --folder DIR     the project (default: the current folder; it must be inside your home)
   --read DIR       another folder the agent may read (repeatable)
   --goal TEXT      what this run is for (shown in the log)
+  --allow-host H   let the agent reach one more site (repeatable; ".example.com" = it and everything under it)
+  --open-network   do not filter the agent's network
   --max-usd N      spending cap for this agent, in US$ (needs ANTHROPIC_API_KEY; default 5)
   --check CMD      the project's check, run after the agent's changes (default: detected)
 
@@ -52,6 +54,8 @@ Opciones (antes de --):
   --folder DIR     el proyecto (por defecto, la carpeta actual; tiene que estar dentro de tu carpeta personal)
   --read DIR       otra carpeta que el agente puede leer (se puede repetir)
   --goal TEXTO     para qué es esta ejecución (sale en el registro)
+  --allow-host H   deja al agente llegar a un sitio más (se puede repetir; «.ejemplo.com» = ese y todo lo que cuelga)
+  --open-network   no filtra la red del agente
   --max-usd N      límite de gasto del agente, en US$ (necesita ANTHROPIC_API_KEY; por defecto 5)
   --check CMD      la comprobación del proyecto, tras cada cambio del agente (por defecto, la que se detecte)
 
@@ -136,9 +140,15 @@ async function doctor(): Promise<number> {
       }
       const a = sa.ensureAgent(project);
       const r = sa.agents.startRun(a.id, { program: "doctor", interactive: false });
-      const env = agentEnv(sa.home, sa.platform.tools, r.home, r.env);
-      const probe = (script: string) => spawnSync(r.argv[0], [...r.argv.slice(1), "/bin/sh", "-c", script], { cwd: project, env: { ...env, REAL: home }, encoding: "utf8", timeout: 30_000 });
-      const works = probe(`echo ok > a.txt && cat a.txt && echo ok > "$HOME/b.txt"`);
+      const env = agentEnv(sa.home, sa.platform.tools, r.home, r.env, sa.net?.env);
+      // (not spawnSync: the network filter lives in this very process and has to keep answering while a probe runs)
+      const probe = (script: string) => new Promise<{ status: number | null }>((res) => {
+        const c2 = spawn(r.argv[0], [...r.argv.slice(1), "/bin/sh", "-c", script], { cwd: project, env: { ...env, REAL: home }, stdio: "ignore" });
+        const t = setTimeout(() => c2.kill("SIGKILL"), 30_000);
+        c2.on("error", () => { clearTimeout(t); res({ status: 127 }); });
+        c2.on("close", (code) => { clearTimeout(t); res({ status: code }); });
+      });
+      const works = await probe(`echo ok > a.txt && cat a.txt && echo ok > "$HOME/b.txt"`);
       say(works.status === 0, L("the agent can work in its project and in its own home", "el agente puede trabajar en su proyecto y en su propia carpeta personal"));
       // What counts is what really happened to YOUR home, looked at from outside: on Linux the agent sees a private
       // home at the same path, so "it could write there" says nothing by itself.
@@ -146,23 +156,30 @@ async function doctor(): Promise<number> {
       fs.writeFileSync(path.join(home, marker), "");   // a file of yours the agent must not even see the name of
       const rc = [".zshrc", ".bashrc", ".profile"].map((f) => path.join(home, f)).filter((f) => fs.existsSync(f));
       const before = rc.map((f) => fs.statSync(f).size);
-      const blocked = (script: string) => probe(script).status !== 0;
-      say(blocked(`ls -a "$REAL" 2>/dev/null | grep -q '${marker}'`), L("blocked: list your home folder", "bloqueado: listar tu carpeta personal"));
-      say(blocked(`ls "$REAL/.ssh" >/dev/null 2>&1`) || !fs.existsSync(path.join(home, ".ssh")), L("blocked: read your SSH keys", "bloqueado: leer tus llaves SSH"));
-      say(blocked(`ls "$REAL/Documents" "$REAL/Documentos" "$REAL/Desktop" "$REAL/Escritorio" 2>/dev/null | grep -q .`), L("blocked: read your documents", "bloqueado: leer tus documentos"));
-      probe(`echo x > "$REAL/.nexus-agent-doctor-pwned"; for f in .zshrc .bashrc .profile; do echo '# pwned' >> "$REAL/$f"; done`);
+      const blocked = async (script: string) => (await probe(script)).status !== 0;
+      say(await blocked(`ls -a "$REAL" 2>/dev/null | grep -q '${marker}'`), L("blocked: list your home folder", "bloqueado: listar tu carpeta personal"));
+      say(await blocked(`ls "$REAL/.ssh" >/dev/null 2>&1`) || !fs.existsSync(path.join(home, ".ssh")), L("blocked: read your SSH keys", "bloqueado: leer tus llaves SSH"));
+      say(await blocked(`ls "$REAL/Documents" "$REAL/Documentos" "$REAL/Desktop" "$REAL/Escritorio" 2>/dev/null | grep -q .`), L("blocked: read your documents", "bloqueado: leer tus documentos"));
+      await probe(`echo x > "$REAL/.nexus-agent-doctor-pwned"; for f in .zshrc .bashrc .profile; do echo '# pwned' >> "$REAL/$f"; done`);
       say(!fs.existsSync(pwned), L("blocked: write in your home folder", "bloqueado: escribir en tu carpeta personal"));
       say(rc.every((f, k) => fs.statSync(f).size === before[k]), L("blocked: change your shell's start-up files", "bloqueado: cambiar los archivos de arranque de tu terminal"));
-      say(blocked(`kill -0 ${process.pid} 2>/dev/null`), L("blocked: signal a process outside the sandbox", "bloqueado: mandar señales a un proceso de fuera"));
+      say(await blocked(`kill -0 ${process.pid} 2>/dev/null`), L("blocked: signal a process outside the sandbox", "bloqueado: mandar señales a un proceso de fuera"));
       if (process.platform === "darwin") {
-        say(blocked(`/usr/bin/osascript -e 'tell application "System Events" to get name of first process' >/dev/null 2>&1`), L("blocked: control other apps (Apple Events)", "bloqueado: controlar otras apps (Apple Events)"));
-        say(blocked(`/usr/bin/security list-keychains 2>/dev/null | grep -q keychain`), L("blocked: reach the Keychain", "bloqueado: llegar al llavero"));
-        say(blocked(`ls /Volumes/* 2>/dev/null | grep -q .`), L("blocked: read other disks", "bloqueado: leer otros discos"));
+        say(await blocked(`/usr/bin/osascript -e 'tell application "System Events" to get name of first process' >/dev/null 2>&1`), L("blocked: control other apps (Apple Events)", "bloqueado: controlar otras apps (Apple Events)"));
+        say(await blocked(`/usr/bin/security list-keychains 2>/dev/null | grep -q keychain`), L("blocked: reach the Keychain", "bloqueado: llegar al llavero"));
+        say(await blocked(`ls /Volumes/* 2>/dev/null | grep -q .`), L("blocked: read other disks", "bloqueado: leer otros discos"));
       } else {
-        say(blocked(`ls /run/user/$(id -u) 2>/dev/null | grep -q .`), L("blocked: reach your session's sockets (D-Bus, SSH agent)", "bloqueado: llegar a los sockets de tu sesión (D-Bus, agente SSH)"));
+        say(await blocked(`ls /run/user/$(id -u) 2>/dev/null | grep -q .`), L("blocked: reach your session's sockets (D-Bus, SSH agent)", "bloqueado: llegar a los sockets de tu sesión (D-Bus, agente SSH)"));
       }
+      if (sa.net && sa.net.enforced) {
+        // the network: straight out is closed; through the filter, only the sites on the list
+        say(await blocked(`curl -s -m 6 --noproxy '*' -o /dev/null https://example.com`), L("blocked: connect straight to the internet", "bloqueado: salir directo a Internet"));
+        say(await blocked(`curl -s -m 8 -o /dev/null -f https://example.com`) && sa.net.blocked.has("example.com"), L("blocked: send data to a site that is not on the list", "bloqueado: enviar datos a un sitio que no está en la lista"));
+        say(!await blocked(`curl -s -m 12 -o /dev/null https://api.anthropic.com/`), L("allowed: reach the model's API through the filter", "permitido: llegar a la API del modelo por el filtro"));
+      } else if (sa.net) process.stderr.write(dim(L("  network: the filter is not enforced on Linux yet (a program can go around it)\n", "  red: el filtro aún no es obligatorio en Linux (un programa puede saltárselo)\n")));
       fs.rmSync(pwned, { force: true }); fs.rmSync(path.join(home, marker), { force: true });
-      const tools = ["git", "node", "claude", "python3"].filter((t) => probe(`command -v ${t} >/dev/null 2>&1`).status === 0);
+      const tools: string[] = [];
+      for (const t of ["git", "node", "claude", "python3"]) if ((await probe(`command -v ${t} >/dev/null 2>&1`)).status === 0) tools.push(t);
       process.stderr.write(dim(L(`  tools the agent will find: ${tools.join(", ") || "none"}\n`, `  herramientas que el agente encontrará: ${tools.join(", ") || "ninguna"}\n`)));
       sa.agents.endRun(r.run, 0);
     } finally { await sa.close(); }
@@ -176,12 +193,15 @@ async function run(argv: string[]): Promise<number> {
   const cut = argv.indexOf("--");
   const opts = cut >= 0 ? argv.slice(0, cut) : argv, prog = cut >= 0 ? argv.slice(cut + 1) : [];
   let folder = process.cwd(), goal = "", maxUsd: number | undefined, check: string | undefined; const read: string[] = [];
+  let network: "filtered" | "open" = "filtered"; const allowHosts: string[] = [];
   for (let i = 0; i < opts.length; i++) {
     const k = opts[i], v = opts[i + 1];
     const need = () => { if (v === undefined) fail(L(`${k} needs a value`, `${k} necesita un valor`)); i++; return v; };
     if (k === "--folder") folder = path.resolve(need());
     else if (k === "--read") read.push(path.resolve(need()));
     else if (k === "--goal") goal = need();
+    else if (k === "--allow-host") allowHosts.push(need());
+    else if (k === "--open-network") network = "open";
     else if (k === "--check") check = need();
     else if (k === "--max-usd") { maxUsd = Number(need()); if (!Number.isFinite(maxUsd) || maxUsd < 0) fail(L("--max-usd needs a number", "--max-usd necesita un número")); }
     else fail(L(`I do not understand «${k}». See: nexus-agent --help`, `no entiendo «${k}». Mira: nexus-agent --help`));
@@ -195,7 +215,7 @@ async function run(argv: string[]): Promise<number> {
 
   const interactive = process.stdin.isTTY === true;
   const sa = await createStandalone({
-    cliPath: SELF, extraTools: SOURCES, lang, apiKey: process.env.ANTHROPIC_API_KEY || undefined,
+    cliPath: SELF, extraTools: SOURCES, lang, apiKey: process.env.ANTHROPIC_API_KEY || undefined, network, allowHosts,
     onPending: () => { process.stderr.write("\x07"); },   // a bell: the request waits for `nexus-agent approvals`
   });
   if (!sa.platform.available()) {
@@ -210,9 +230,10 @@ async function run(argv: string[]): Promise<number> {
     sa.publish(real);
     let argvProg = program;
     if (path.basename(program[0]) === "claude" && !program.includes("--mcp-config")) argvProg = [program[0], "--mcp-config", r.env.NEXUS_MCP_CONFIG, ...program.slice(1)];
-    const env = agentEnv(sa.home, sa.platform.tools, r.home, r.env);
+    const env = agentEnv(sa.home, sa.platform.tools, r.home, r.env, sa.net?.env);
     const short = real.replace(home, "~");
-    process.stderr.write(`${acc("◆")} ${bold(`NEXUS · ${agent.name}`)} ${dim(`· ${short} · ${L("isolated", "aislado")} · ${L("your keys stay outside", "tus llaves se quedan fuera")}`)}\n`);
+    const netNote = !sa.net ? L("network open", "red abierta") : sa.net.enforced ? L("network: listed sites only", "red: solo los sitios de la lista") : L("network: filter not enforced on Linux yet", "red: el filtro aún no es obligatorio en Linux");
+    process.stderr.write(`${acc("◆")} ${bold(`NEXUS · ${agent.name}`)} ${dim(`· ${short} · ${L("isolated", "aislado")} · ${L("your keys stay outside", "tus llaves se quedan fuera")} · ${netNote}`)}\n`);
     // A terminal or a pipe is handed over as it is. Output redirected to a FILE is relayed by this process instead:
     // the file is outside the sandbox, and a program that cannot even stat its own stdout dies at start-up (node does).
     const how = (fd: number) => { try { return fs.fstatSync(fd).isFile() ? "pipe" as const : "inherit" as const; } catch { return "pipe" as const; } };
@@ -233,6 +254,10 @@ async function run(argv: string[]): Promise<number> {
     clearInterval(watch);
     try { sa.agents.endRun(r.run, code); } catch { /* halted */ }
     if (halted) { process.stderr.write(`\n${red(`◆ ${L("NEXUS halted the agent", "NEXUS ha detenido al agente")}`)}: ${halted}\n`); code = 137; }
+    if (sa.net && sa.net.blocked.size) {
+      const list = [...sa.net.blocked.entries()].sort((a, b) => b[1] - a[1]).slice(0, 8).map(([h, n]) => `${h} (${n})`).join(", ");
+      process.stderr.write(dim(`${acc("◆")} ${L("NEXUS blocked connections to", "NEXUS ha bloqueado conexiones a")}: ${list}. ${L("To allow a site: --allow-host NAME", "Para permitir un sitio: --allow-host NOMBRE")}\n`));
+    }
   } finally { await sa.close(); }
   return code;
 }

