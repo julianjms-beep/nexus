@@ -1,0 +1,49 @@
+{
+  "version": "0.2.17",
+  "released": "2026-11-11T09:20:43.361Z",
+  "notes": [
+    "Las actualizaciones llegan ahora por Internet: ya no hace falta estar en la red del laboratorio",
+    "Terminal lista para todo: python y pip por su nombre, pipx, corepack (pnpm y yarn), GitHub CLI, vim, htop, sqlite3, cmake, gdb y más",
+    "Cortafuegos, bloqueo automático y la página Privacidad y seguridad",
+    "Buscador más rápido, NEXUS Store y NEXUS Mail",
+    "Crear agentes, agencias y automatizaciones con una frase vuelve a funcionar"
+  ],
+  "bundles": [
+    {
+      "from": "0.2.11",
+      "file": "nexus-0.2.17-from-0.2.11.tar",
+      "sha256": "3bebd8bd9814ca588259598ef294470cab1489b1d15c8bde00dc174d8f980d25",
+      "size": 3870720
+    },
+    {
+      "from": "0.2.12",
+      "file": "nexus-0.2.17-from-0.2.12.tar",
+      "sha256": "f6d771f797dd15c34140f6fce9b229cef5fd7641c77e36aebe1d0d5424ad0f2b",
+      "size": 3870720
+    },
+    {
+      "from": "0.2.14",
+      "file": "nexus-0.2.17-from-0.2.14.tar",
+      "sha256": "b8a95e53d8b2a151484648500bdb84c3c8f583e4c5c0f9ac59d13e34ff9c0609",
+      "size": 1976320
+    },
+    {
+      "from": "0.2.15",
+      "file": "nexus-0.2.17-from-0.2.15.tar",
+      "sha256": "1526b5bf42e682beff35f039c9bfe788b1339021b365d72179172c248e242e9c",
+      "size": 1976320
+    },
+    {
+      "from": "0.2.16",
+      "file": "nexus-0.2.17-from-0.2.16.tar",
+      "sha256": "22f3fb99a6132679708a5b84fde191c48fa1065439a1487ec26e5b8a463453ae",
+      "size": 1976320
+    },
+    {
+      "from": "*",
+      "file": "nexus-0.2.17-from-any.tar",
+      "sha256": "86672a7f044b299b3e4bfd0aa6cecd038a2571ae354ae388f6d31a804e3b1a23",
+      "size": 541614080
+    }
+  ]
+}
