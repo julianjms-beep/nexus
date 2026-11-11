@@ -12,7 +12,7 @@ export DEBIAN_FRONTEND=noninteractive
 log() { echo "nexus post: $*"; }
 
 # ---- Debian packages the image has and an installed computer may not
-want="nftables swayidle network-manager wpasupplicant iw rfkill bluez pipewire pipewire-pulse pipewire-alsa wireplumber rtkit power-profiles-daemon brightnessctl playerctl"
+want="nftables swayidle python-is-python3 python3-dev pipx wget zip vim htop tree sqlite3 gh cmake pkg-config gdb fzf man-db network-manager wpasupplicant iw rfkill bluez pipewire pipewire-pulse pipewire-alsa wireplumber rtkit power-profiles-daemon brightnessctl playerctl"
 # the firmware for real Wi-Fi and Bluetooth chips is big and useless inside a virtual machine
 if ! systemd-detect-virt -q; then
   want="$want firmware-iwlwifi firmware-realtek firmware-mediatek firmware-atheros firmware-brcm80211"
@@ -26,9 +26,9 @@ if [ -n "$missing" ]; then
   # the security packages first and on their own: they are small, and a slow network must not leave them out
   first= rest=
   for p in $missing; do case "$p" in nftables | swayidle) first="$first $p" ;; *) rest="$rest $p" ;; esac; done
-  timeout 60 apt-get update -q >/dev/null 2>&1 || log "could not refresh the package lists (no Internet?)"
-  [ -n "$first" ] && { timeout 90 apt-get install -y -q --no-install-recommends $first >/dev/null 2>&1 || log "could not install:$first"; }
-  [ -n "$rest" ] && { timeout 130 apt-get install -y -q --no-install-recommends $rest >/dev/null 2>&1 || log "could not install:$rest (Ajustes → Actualizaciones → Debian will offer them again)"; }
+  timeout 40 apt-get update -q >/dev/null 2>&1 || log "could not refresh the package lists (no Internet?)"
+  [ -n "$first" ] && { timeout 60 apt-get install -y -q --no-install-recommends $first >/dev/null 2>&1 || log "could not install:$first"; }
+  [ -n "$rest" ] && { timeout 180 apt-get install -y -q --no-install-recommends $rest >/dev/null 2>&1 || log "could not install:$rest (Ajustes → Actualizaciones → Debian will offer them again)"; }
 fi
 
 # ---- groups of the people of this computer (Wi-Fi, Bluetooth and the power mode from the menu bar)

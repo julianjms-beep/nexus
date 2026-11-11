@@ -18,7 +18,7 @@ case "$ARCH" in
 esac
 HOST_ARCH=$(dpkg --print-architecture)
 FOREIGN=$([ "$ARCH" = "$HOST_ARCH" ] && echo 0 || echo 1)
-WORK=${NEXUS_BUILD:-$HOME/nexus-build$([ "$FOREIGN" = 1 ] && echo "-$ARCH")}
+WORK=${NEXUS_BUILD:-$HOME/nexus-build$([ "$FOREIGN" = 1 ] && echo "-$ARCH" || true)}   # (|| true: under set -e a false test here would stop the build without a word)
 NODE_VERSION=24.20.0
 NODE_TARBALL=${NODE_TARBALL:-/tmp/node-v${NODE_VERSION}-linux-${NODE_ARCH}.tar.xz}
 STAGE=$WORK/stage
@@ -73,7 +73,7 @@ fi
 tar -xJf "$NODE_TARBALL" -C "$STAGE/usr/lib/nexus/node" --strip-components=1 --exclude='*/share/doc' --exclude='*/share/man' --exclude='*/README.md' --exclude='*/CHANGELOG.md'
 # node, npm and npx for everyone; `npm i -g` goes to ~/.local (never into the runtime the NEXUS services use)
 mkdir -p "$STAGE/usr/local/bin" "$STAGE/usr/lib/nexus/node/etc"
-for b in node npm npx; do ln -sf "/usr/lib/nexus/node/bin/$b" "$STAGE/usr/local/bin/$b"; done
+for b in node npm npx corepack; do ln -sf "/usr/lib/nexus/node/bin/$b" "$STAGE/usr/local/bin/$b"; done
 printf 'prefix=${HOME}/.local\nfund=false\nupdate-notifier=false\n' > "$STAGE/usr/lib/nexus/node/etc/npmrc"
 is_target_elf "$STAGE/usr/lib/nexus/node/bin/node"
 # npm runs on the image's own node from here on, so packages with native parts get the image's architecture
