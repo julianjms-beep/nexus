@@ -12,7 +12,7 @@ export DEBIAN_FRONTEND=noninteractive
 log() { echo "nexus post: $*"; }
 
 # ---- Debian packages the image has and an installed computer may not
-want="nftables swayidle python-is-python3 python3-dev pipx wget zip vim htop tree sqlite3 gh cmake pkg-config gdb fzf man-db zsh zsh-autosuggestions zsh-syntax-highlighting network-manager wpasupplicant iw rfkill bluez pipewire pipewire-pulse pipewire-alsa wireplumber rtkit power-profiles-daemon brightnessctl playerctl"
+want="nftables swayidle python-is-python3 python3-dev pipx wget zip vim htop tree sqlite3 gh cmake pkg-config gdb fzf man-db zsh zsh-autosuggestions zsh-syntax-highlighting flatpak xdg-desktop-portal xdg-desktop-portal-gtk network-manager wpasupplicant iw rfkill bluez pipewire pipewire-pulse pipewire-alsa wireplumber rtkit power-profiles-daemon brightnessctl playerctl"
 # the firmware for real Wi-Fi and Bluetooth chips is big and useless inside a virtual machine
 if ! systemd-detect-virt -q; then
   want="$want firmware-iwlwifi firmware-realtek firmware-mediatek firmware-atheros firmware-brcm80211"

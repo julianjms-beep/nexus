@@ -24,6 +24,7 @@ import { createDevices, DeviceError, type Runner } from "./devices.ts";
 import { createWallpapers } from "./wallpaper.ts";
 import { checkup, exposedListeners, type RootFacts } from "./guard.ts";
 import { Store, profileName } from "./store.ts";
+import { LinuxApps, humanSize, type Run as LinuxRun } from "./linuxapps.ts";
 import { Mail, MailError } from "./mail.ts";
 import { PROVIDERS, isProvider, checkKey, providerSearch, SearchError, wikiSearchUrl, parseWikiSearch, calc, answerRequest, parseAnswer, ANSWER_MODEL, type ProviderId, type WebResult } from "./websearch.ts";
 import { PageIndex, settingsMatches, tokenize, fold, wikiQueryUrl, parseWiki, suggestUrl, parseSuggest } from "./search.ts";
@@ -177,6 +178,9 @@ export type SessionOptions = {
   windowFn?: (action: string) => Promise<boolean>;
   /** Whether a catalog app's `needs` file exists (tests); defaults to fs.existsSync. */
   existsFn?: (file: string) => boolean;
+  /** NEXUS Store → Linux apps: how `flatpak` is run and how Flathub is asked (tests replace both) */
+  linuxRun?: LinuxRun;
+  linuxFetch?: typeof fetch;
   /** How often the open windows are checked for the dock's "running" dots (ms). */
   windowPollMs?: number;
   /** HTTP GET returning parsed JSON (weather). Defaults to fetch with a 10 s timeout. */
@@ -224,6 +228,19 @@ function defaultSpawn(argv: string[]) {
   child.unref();
   return { pid: child.pid, onExit: (cb: () => void) => { child.on("exit", cb); child.on("error", cb); } };
 }
+/** Runs a program to its end, handing over each line it prints as it comes (flatpak's progress). */
+const defaultLinuxRun: LinuxRun = (argv, onLine) => new Promise((resolve) => {
+  let out = "", rest = "";
+  const child = spawn(argv[0], argv.slice(1), { stdio: ["ignore", "pipe", "pipe"], env: { ...process.env, LC_ALL: "C.UTF-8" } });
+  const take = (d: Buffer) => {
+    const t = d.toString("utf8"); if (out.length < 200000) out += t;
+    const parts = (rest + t).split(/[\r\n]/); rest = parts.pop() ?? "";
+    for (const l of parts) if (l.trim()) onLine?.(l);
+  };
+  child.stdout.on("data", take); child.stderr.on("data", take);
+  child.on("error", () => resolve({ code: 127, out }));
+  child.on("close", (code) => resolve({ code: code ?? 1, out }));
+});
 function defaultList(): Promise<string[] | null> {
   return new Promise((resolve) => execFile("wlrctl", ["toplevel", "list"], { timeout: 3000 }, (err, out) => resolve(err ? null : out.split("\n").filter(Boolean))));
 }
@@ -751,6 +768,9 @@ export function createSession(o: SessionOptions) {
   let mailTimer: ReturnType<typeof setInterval> | undefined;
   // ---- NEXUS Store (core/src/store.ts): web apps, each in its own window with its own session
   const store = new Store(path.join(o.configDir, "webapps.json"));
+  // ---- NEXUS Store → Linux apps (core/src/linuxapps.ts): Flathub's catalogue, installed with flatpak for this person
+  const linuxApps = new LinuxApps({ run: o.linuxRun ?? defaultLinuxRun, fetchFn: o.linuxFetch, available: () => existsFn("/usr/bin/flatpak"), onChange: () => push("store", {}) });
+  const linuxState = async () => ({ available: linuxApps.available(), installed: await linuxApps.installed(), jobs: linuxApps.jobList() });
   // ---- web results from the person's search provider (core/src/websearch.ts). The key lives in one 0600 file and
   //      is never sent anywhere but to its provider, nor back to the desktop.
   const providerFile = path.join(o.configDir, "search-provider.json");
@@ -1009,6 +1029,35 @@ export function createSession(o: SessionOptions) {
       }
       if (p === "/store" || p.startsWith("/store/")) {
         if (m === "GET" && p === "/store") return send(200, store.view());
+        // Linux apps: the catalogue (search or the most installed), one app's page, and what is installed
+        if (p === "/store/linux" || p.startsWith("/store/linux/")) {
+          try {
+            if (m === "GET" && p === "/store/linux") {
+              const q = (url.searchParams.get("q") ?? "").slice(0, 80);
+              const state = await linuxState();
+              // the catalogue needs Internet; what is installed is still shown without it
+              try { return send(200, { ...state, apps: await linuxApps.search(q) }); }
+              catch (e) { return send(200, { ...state, apps: [], error: (e as Error).message }); }
+            }
+            if (m === "GET" && p === "/store/linux/app") {
+              const d = await linuxApps.details(url.searchParams.get("id"));
+              const state = await linuxState();
+              return send(200, { ...d, download: humanSize(d.downloadBytes), size: humanSize(d.installedBytes), installed: state.installed.some((a) => a.id === d.id), job: state.jobs.find((j) => j.id === d.id) ?? null });
+            }
+            if (m === "POST") {
+              const b = await body(req, 4096);
+              if (p === "/store/linux/install") { const { job, done } = linuxApps.install(b?.id); done.then((j) => push("notice", { text: j.state === "done" ? "App instalada. Ya puedes abrirla desde NEXUS Store." : (j.error ?? "No se ha podido instalar la app."), kind: j.state === "done" ? "info" : "warn", app: "store" })).catch(() => {}); return send(200, { job }); }
+              if (p === "/store/linux/remove") { const { job, done } = linuxApps.remove(b?.id, b?.data === true); await done; return send(job.state === "done" ? 200 : 400, job.state === "done" ? await linuxState() : { error: job.error }); }
+              if (p === "/store/linux/open") {
+                const argv = linuxApps.launchArgv(b?.id);
+                if (!(await linuxApps.installed()).some((a) => a.id === argv[2])) return send(404, { error: "Esa app no está instalada." });
+                spawnFn(argv);
+                return send(200, { ok: true });
+              }
+            }
+          } catch (e) { return send(400, { error: (e as Error).message }); }
+          return send(404, { error: "not found" });
+        }
         if (m === "POST") {
           const b = await body(req, 4096);
           try {

@@ -866,3 +866,41 @@ test("the launcher: GET /search joins apps, Ajustes pages and files; «Buscar en
     assert.deepEqual(s.spawned.at(-1), ["nexus-app", "Browser", "hoteles en Madrid"]);
   } finally { await s.stop(); }
 });
+
+test("NEXUS Store → Linux apps: catalogue, an app's page, install for this person, open only what is installed, remove", async () => {
+  const ran: string[][] = [];
+  let have = "";
+  const fh = (body: unknown) => new Response(JSON.stringify(body), { status: 200, headers: { "content-type": "application/json" } });
+  const t = await setup({}, {
+    existsFn: (f: string) => f === "/usr/bin/flatpak",
+    linuxFetch: async (u: string) => String(u).includes("/collection/popular") ? fh({ hits: [{ app_id: "org.videolan.VLC", name: "VLC", summary: "Media player", type: "desktop-application", arches: ["aarch64", "x86_64"] }] })
+      : String(u).includes("/appstream/org.videolan.VLC") ? fh({ name: "VLC", summary: "Media player", description: "<p>Plays everything.</p>" })
+      : String(u).includes("/summary/org.videolan.VLC") ? fh({ arches: ["aarch64", "x86_64"], download_size: 31457280, installed_size: 96468992, metadata: { permissions: { filesystems: ["host"], shared: ["network"] } } })
+      : new Response("{}", { status: 404 }),
+    linuxRun: async (argv: string[]) => {
+      ran.push(argv);
+      if (argv[1] === "install") have = "org.videolan.VLC\tVLC\t3.0.21\t92 MB\n";
+      if (argv[1] === "uninstall") have = "";
+      return { code: 0, out: argv[1] === "list" ? have : "" };
+    },
+  });
+  try {
+    const v0 = (await t.call("GET", "/store/linux")).json;
+    assert.equal(v0.available, true);
+    assert.deepEqual([v0.apps.length, v0.apps[0].id, v0.installed.length], [1, "org.videolan.VLC", 0]);
+    const page = (await t.call("GET", "/store/linux/app?id=org.videolan.VLC")).json;
+    assert.deepEqual([page.description, page.download, page.size, page.risk, page.installed], ["Plays everything.", "30 MB", "92 MB", "alto", false]);
+    assert.equal(page.permissions[0].text, "Puede leer y cambiar todos los archivos del equipo");
+    assert.equal((await t.call("POST", "/store/linux/open", { id: "org.videolan.VLC" })).status, 404, "not installed yet");
+    assert.equal((await t.call("POST", "/store/linux/install", { id: "org.videolan.VLC; reboot" })).status, 400);
+    assert.equal((await t.call("POST", "/store/linux/install", { id: "org.videolan.VLC" })).json.job.action, "install");
+    await until(() => ran.some((a) => a[1] === "install"));
+    assert.ok(ran.some((a) => a.join(" ") === "flatpak install --user --noninteractive -y flathub org.videolan.VLC"));
+    await until(async () => (await t.call("GET", "/store/linux")).json.installed.length === 1);
+    assert.equal((await t.call("POST", "/store/linux/open", { id: "org.videolan.VLC" })).status, 200);
+    assert.deepEqual(t.spawned.at(-1), ["flatpak", "run", "org.videolan.VLC"]);
+    const after = await t.call("POST", "/store/linux/remove", { id: "org.videolan.VLC", data: true });
+    assert.deepEqual([after.status, after.json.installed.length], [200, 0]);
+    assert.ok(ran.some((a) => a.includes("--delete-data")));
+  } finally { await t.stop(); }
+});
