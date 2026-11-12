@@ -20,6 +20,7 @@ Window {
     // "code" (VS Code) only while it is installed: nexus-sessiond leaves it out of Session.apps otherwise
     readonly property var pinned: ["terminal", "files", "browser", "editor", "code", "agents", "automations", "connect", "mail", "store", "monitor", "settings"]
         .filter(function(id) { return id !== "code" || !!Session.apps.code })
+    readonly property var fromStore: Object.keys(Session.apps).filter(function(id) { return !!Session.apps[id].store }).sort(function(a, b) { return Session.apps[a].name.localeCompare(Session.apps[b].name) }).slice(0, 8)
     readonly property var glyphs: ({ terminal: "terminal", files: "folder", browser: "globe", editor: "note", agents: "agents",
                                      automations: "bolt", connect: "link", store: "grid", mail: "mail", monitor: "pulse", settings: "gear", code: "code" })
     readonly property var sys: Session.system
@@ -160,6 +161,21 @@ Window {
                 glyph: bar.glyphs[modelData] || "grid"
                 running: !!(Session.apps[modelData] || {}).running
                 onClicked: Session.launch(modelData)
+            }
+        }
+        // the apps installed from NEXUS Store, with their own picture or letter (the first eight; all are in the menu)
+        Rectangle { visible: bar.fromStore.length > 0; width: 1; height: 22; anchors.verticalCenter: parent.verticalCenter; color: bar.soft }
+        Repeater {
+            model: bar.fromStore
+            Item {
+                id: sa
+                required property string modelData
+                width: 44; height: 44
+                Rectangle { anchors.fill: parent; radius: 10; color: sma.pressed ? Qt.rgba(bar.soft.r, bar.soft.g, bar.soft.b, bar.soft.a * 1.6) : sma.containsMouse ? bar.soft : "transparent"
+                    Behavior on color { ColorAnimation { duration: Theme.ms(120) } } }
+                AppIcon { app: sa.modelData; anchors.centerIn: parent; width: 26; height: 26; scale: sma.pressed ? 0.9 : 1
+                    Behavior on scale { NumberAnimation { duration: Theme.ms(140) } } }
+                MouseArea { id: sma; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: Session.launch(sa.modelData) }
             }
         }
         Rectangle { width: 1; height: 22; anchors.verticalCenter: parent.verticalCenter; color: bar.soft }

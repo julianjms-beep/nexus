@@ -23,6 +23,7 @@ Window {
 
     readonly property var order: ["files", "browser", "editor", "code", "terminal", "agents", "automations", "connect", "mail", "store", "monitor", "settings"]
         .filter(function(id) { return id !== "code" || !!Session.apps.code })   // VS Code only while installed
+        .concat(Object.keys(Session.apps).filter(function(id) { return !!Session.apps[id].store }).sort(function(a, b) { return Session.apps[a].name.localeCompare(Session.apps[b].name) }))   // what was installed from NEXUS Store
     function plain(t) {
         return String(t).toLowerCase().replace(/[áàä]/g, "a").replace(/[éèë]/g, "e").replace(/[íìï]/g, "i")
             .replace(/[óòö]/g, "o").replace(/[úùü]/g, "u").replace(/ñ/g, "n")

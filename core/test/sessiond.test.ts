@@ -920,6 +920,17 @@ test("NEXUS Store → Linux apps: catalogue, an app's page, install for this per
     await until(async () => (await t.call("GET", "/store/linux")).json.installed.length === 1);
     assert.equal((await t.call("POST", "/store/linux/open", { id: "org.videolan.VLC" })).status, 200);
     assert.deepEqual(t.spawned.at(-1), ["flatpak", "run", "org.videolan.VLC"]);
+    // installed Store apps are in the list the start menu, the bar and the launcher read, and open from there
+    await t.call("POST", "/store/install", { id: "whatsapp" });
+    const menu = await until(async () => { const a = (await t.call("GET", "/apps")).json; return a["linux-org.videolan.VLC"] && a["web-whatsapp"] ? a : null; });
+    assert.deepEqual([menu["linux-org.videolan.VLC"].name, menu["linux-org.videolan.VLC"].store.kind, menu["web-whatsapp"].store.letter], ["VLC", "linux", "W"]);
+    assert.ok(menu.terminal && !menu["web-telegram"]);
+    assert.equal((await t.call("POST", "/launch", { app: "linux-org.videolan.VLC" })).status, 200);
+    assert.deepEqual(t.spawned.at(-1), ["flatpak", "run", "org.videolan.VLC"]);
+    assert.equal((await t.call("POST", "/launch", { app: "web-whatsapp" })).status, 200);
+    assert.deepEqual(t.spawned.at(-1)!.slice(0, 2), ["nexus-app", "WebApp"]);
+    assert.equal((await t.call("POST", "/launch", { app: "web-telegram" })).status, 400, "not installed");
+    assert.equal((await t.call("POST", "/launch", { app: "linux-org.not.Installed" })).status, 400);
     const after = await t.call("POST", "/store/linux/remove", { id: "org.videolan.VLC", data: true });
     assert.deepEqual([after.status, after.json.installed.length], [200, 0]);
     assert.ok(ran.some((a) => a.includes("--delete-data")));

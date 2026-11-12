@@ -398,6 +398,8 @@ export function createSession(o: SessionOptions) {
   };
   // `folder` (Archivos only): open it at that folder of the person's home, e.g. NEXUS AI's "Enséñame 2026"
   const launch = async (app: string, by: string, folder?: unknown, page?: unknown) => {
+    const fromStore = launchStoreApp(app);
+    if (fromStore) return fromStore;
     if (!Object.hasOwn(CATALOG, app)) throw new Error(`unknown app ${app}`);
     const a = CATALOG[app];
     if (!installed(app)) throw new Error(`${a.name} no está instalado`);
@@ -858,7 +860,28 @@ export function createSession(o: SessionOptions) {
   // ---- NEXUS Store (core/src/store.ts): web apps, each in its own window with its own session
   const store = new Store(path.join(o.configDir, "webapps.json"));
   // ---- NEXUS Store → Linux apps (core/src/linuxapps.ts): Flathub's catalogue, installed with flatpak for this person
-  const linuxApps = new LinuxApps({ run: o.linuxRun ?? defaultLinuxRun, fetchFn: o.linuxFetch, available: () => existsFn("/usr/bin/flatpak"), onChange: () => push("store", {}) });
+  const linuxApps = new LinuxApps({ run: o.linuxRun ?? defaultLinuxRun, fetchFn: o.linuxFetch, available: () => existsFn("/usr/bin/flatpak"), onChange: () => { void refreshLinuxInstalled(); } });
+  // The apps of the Store that are installed also live in the start menu, the bar and the launcher, next to NEXUS's
+  // own: "web-<id>" and "linux-<application id>". The Linux list is asked to flatpak when it can have changed.
+  let linuxInstalled: { id: string; name: string }[] = [];
+  const refreshLinuxInstalled = async () => { try { linuxInstalled = await linuxApps.installed(); } catch { /* keeps the last list */ } push("store", {}); };
+  const linuxIcon = (id: string) => {
+    const base = path.join(o.dataDir ?? path.join(homeDir, ".local", "share"), "flatpak", "exports", "share", "icons", "hicolor");
+    for (const f of [`128x128/apps/${id}.png`, `scalable/apps/${id}.svg`, `256x256/apps/${id}.png`, `64x64/apps/${id}.png`]) if (existsFn(path.join(base, f))) return path.join(base, f);
+    return "";
+  };
+  const storeEntries = (): Record<string, { name: string; icon: null; running: boolean; store: { kind: "web" | "linux"; letter: string; color: string; image: string } }> => {
+    const out: ReturnType<typeof storeEntries> = {};
+    for (const a of store.view().apps) if (a.installed) out["web-" + a.id] = { name: a.name, icon: null, running: false, store: { kind: "web", letter: a.letter, color: a.color, image: "" } };
+    for (const a of linuxInstalled) out["linux-" + a.id] = { name: a.name, icon: null, running: false, store: { kind: "linux", letter: (a.name.match(/[\p{L}\p{N}]/u)?.[0] ?? "?").toUpperCase(), color: "#7c6cff", image: linuxIcon(a.id) } };
+    return out;
+  };
+  /** Opens an installed Store app by its menu id, or returns null when the id is not one. */
+  const launchStoreApp = (app: string): { app: string } | null => {
+    if (app.startsWith("web-")) { const a = store.get(app.slice(4)); if (!a) throw new Error("Esa app no está instalada."); spawnFn(["nexus-app", "WebApp", a.url, a.name, a.id]); return { app }; }
+    if (app.startsWith("linux-")) { const argv = linuxApps.launchArgv(app.slice(6)); if (!linuxInstalled.some((a) => a.id === argv[2])) throw new Error("Esa app no está instalada."); spawnFn(argv); return { app }; }
+    return null;
+  };
   const linuxState = async () => ({ available: linuxApps.available(), installed: await linuxApps.installed(), jobs: linuxApps.jobList() });
   // ---- web results from the person's search provider (core/src/websearch.ts). The key lives in one 0600 file and
   //      is never sent anywhere but to its provider, nor back to the desktop.
@@ -971,7 +994,7 @@ export function createSession(o: SessionOptions) {
         const since = Number(url.searchParams.get("since") ?? 0), wait = Math.min(Number(url.searchParams.get("wait") ?? 25_000), 25_000);
         return send(200, await poll(Number.isFinite(since) ? since : 0, Number.isFinite(wait) ? Math.max(0, wait) : 0));
       }
-      if (m === "GET" && p === "/apps") return send(200, Object.fromEntries(installedApps().map(([id, a]) => [id, { name: a.name, icon: a.icon, running: isRunning(id) }])));
+      if (m === "GET" && p === "/apps") return send(200, { ...Object.fromEntries(installedApps().map(([id, a]) => [id, { name: a.name, icon: a.icon, running: isRunning(id) }])), ...storeEntries() });
       if (m === "POST" && p === "/launch") { const b = await body(req); return send(200, await launch(String(b.app), "shell", b.path, b.page)); }
       // the launcher's «Buscar en la web»: a Navegador window on NEXUS Search with that text (the Browser turns text
       // that is not an address into a search, as its own bar does)
@@ -1203,8 +1226,8 @@ export function createSession(o: SessionOptions) {
         if (m === "POST") {
           const b = await body(req, 4096);
           try {
-            if (p === "/store/install") return send(200, store.install(b?.id));
-            if (p === "/store/add") return send(200, store.add({ name: b?.name, url: b?.url }));
+            if (p === "/store/install") { const v = store.install(b?.id); push("store", {}); return send(200, v); }
+            if (p === "/store/add") { const v = store.add({ name: b?.name, url: b?.url }); push("store", {}); return send(200, v); }
             if (p === "/store/remove") {
               const r = store.remove(b?.id);
               // its saved session goes with it (cookies, logins): the app starts clean if it is installed again
@@ -1212,6 +1235,7 @@ export function createSession(o: SessionOptions) {
                 const dir = path.join(base, profileName(r.removed.id).replace(/^webapp-/, ""));
                 if (path.dirname(dir) === base) fs.rmSync(dir, { recursive: true, force: true });
               }
+              push("store", {});
               return send(200, r.view);
             }
             if (p === "/store/open") {
@@ -1478,6 +1502,7 @@ export function createSession(o: SessionOptions) {
     server, token, tokenFile, push, launch, running,
     checkWindows,
     start: () => new Promise<number>((r) => server.listen(o.port ?? 7779, "127.0.0.1", () => {
+      void refreshLinuxInstalled();   // the Linux apps of the Store, for the start menu
       relay();
       updates.connect();
       mailTimer = setInterval(() => { if (mail.hasVip()) mail.poll().catch(() => {}); }, 5 * 60_000); mailTimer.unref();

@@ -160,6 +160,7 @@ QtObject {
         else if (e.kind === "reveal") revealRequested(String(d.path || ""))
         else if (e.kind === "notice") notice(d)
         else if (e.kind === "notices") refreshNotices()
+        else if (e.kind === "store") refreshApps()   // a Store app was installed or removed: the menu and the bar follow
         else if (e.kind === "desktops") desktops = d
         else if (e.kind === "lock") locked = d.locked === true
         else if (e.kind === "me") { me = d; meStamp = Date.now() }
