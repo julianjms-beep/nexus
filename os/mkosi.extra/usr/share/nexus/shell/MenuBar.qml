@@ -49,6 +49,7 @@ Window {
             else if (a.panel) Session.openPanel(a.panel)
             else if (a.ask) Session.prefillRequested(a.ask)
             else if (a.wallpaper) Session.nextWallpaper()
+            else if (a.desktop) Session.goToDesktop(a.desktop)
             else if (a.power) { if (a.power === "lock") Session.power("lock"); else Session.askLocalConfirm(a.power) }
         }
     }

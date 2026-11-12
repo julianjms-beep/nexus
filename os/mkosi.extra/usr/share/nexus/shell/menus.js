@@ -25,7 +25,10 @@ function windowMenu() {
         { label: "Pantalla completa", win: "fullscreen" }, SEP,
         { label: "A la mitad izquierda", keys: "super+Left" },
         { label: "A la mitad derecha", keys: "super+Right" }, SEP,
-        { label: "Cerrar ventana", win: "close", hint: "super+q" }
+        { label: "Cerrar ventana", win: "close", hint: "super+q" }, SEP,
+        { label: "Todas las ventanas y escritorios", act: { panel: "overview" }, hint: "super+Tab" },
+        { label: "Escritorio siguiente", act: { desktop: "right" }, hint: "super+ctrl+→" },
+        { label: "Escritorio anterior", act: { desktop: "left" }, hint: "super+ctrl+←" }
     ] };
 }
 

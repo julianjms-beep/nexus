@@ -12,7 +12,10 @@ case "${1:-help}" in
   ui)     shift; p="${1:-ai}"; [ $# -gt 0 ] && shift
           if [ $# -gt 0 ]; then d="{\"panel\":\"$(json "$p")\",\"text\":\"$(json "$*")\"}"; else d="{\"panel\":\"$(json "$p")\"}"; fi
           curl -fsS -H "Authorization: Bearer $(stok)" -H 'Content-Type: application/json' -d "$d" "$SESSION/ui" >/dev/null ;;
+  desktop) curl -fsS -H "Authorization: Bearer $(stok)" -H 'Content-Type: application/json' -d "{\"to\":\"$(json "${2:?1-4|left|right}")\"}" "$SESSION/desktop" >/dev/null ;;
+  move)   l=$(wlrctl toplevel list state:focused 2>/dev/null | head -n 1); [ -n "$l" ] || exit 0
+          curl -fsS -H "Authorization: Bearer $(stok)" -H 'Content-Type: application/json' -d "{\"action\":\"move\",\"line\":\"$(json "$l")\",\"to\":\"$(json "${2:?1-4}")\"}" "$SESSION/window" >/dev/null ;;
   notify) shift; t="${1:?text}"; shift; k="${1:-info}"; a="${2:-}"
           curl -fsS -H "Authorization: Bearer $(stok)" -H 'Content-Type: application/json' -d "{\"text\":\"$(json "$t")\",\"kind\":\"$(json "$k")\",\"app\":\"$(json "$a")\"}" "$SESSION/notices/add" >/dev/null ;;
-  *) echo "usage: nexusctl status | ask <text> | open <terminal|files|editor|monitor|settings> | ui <ai|launcher|power|center|overview> [question for the AI panel] | notify <text> [info|good|warn] [app]" ;;
+  *) echo "usage: nexusctl status | ask <text> | open <terminal|files|editor|monitor|settings> | ui <ai|launcher|power|center|overview> [question for the AI panel] | desktop <1-4|left|right> | move <1-4> | notify <text> [info|good|warn] [app]" ;;
 esac

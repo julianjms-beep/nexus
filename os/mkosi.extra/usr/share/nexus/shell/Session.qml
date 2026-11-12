@@ -35,6 +35,11 @@ QtObject {
     function deleteNotice(id) { request("POST", "/notices/delete", { id: id }, function() { s.refreshNotices() }) }
     function clearRecent() { request("POST", "/notices/clear", {}, function() { s.refreshNotices() }) }
     signal centerRequested()   // the bell: open the centre (Main.qml)
+    // virtual desktops and every window, for the overview (nexus-sessiond keeps the book): {count, current, windows:[{line, app, appId, title, name, icon, focused, desktop}]}
+    property var desktops: ({ count: 4, current: 1, windows: [] })
+    function refreshDesktops() { request("GET", "/desktops", null, function(st, j) { if (st === 200 && j) s.desktops = j }) }
+    function goToDesktop(to) { request("POST", "/desktop", { to: to }, function(st, j) { if (st === 200 && j) s.desktops = j }) }
+    function windowOp(line, action, to) { request("POST", "/window", to === undefined ? { action: action, line: line } : { action: action, line: line, to: to }, function() { s.refreshDesktops() }) }
     // the shell's own health (Main.qml), sent now and again after every reconnect (a restarted nexus-sessiond)
     property var shellHealth: null
     function reportShell(parts, failed) { shellHealth = { parts: parts, failed: failed }; sendShellHealth() }
@@ -123,7 +128,7 @@ QtObject {
         if (body !== undefined && body !== null) { x.setRequestHeader("Content-Type", "application/json"); x.send(JSON.stringify(body)) }
         else x.send()
     }
-    function begin() { refreshMe(); refreshFocus(); refreshApps(); refreshPrefs(); refreshSystem(); refreshTasks(); refreshWeather(); refreshWallpaper(); refreshNotices(); if (wantUpdate) refreshUpdate(); sendShellHealth(); if (!polling) poll() }
+    function begin() { refreshMe(); refreshFocus(); refreshApps(); refreshPrefs(); refreshSystem(); refreshTasks(); refreshWeather(); refreshWallpaper(); refreshNotices(); refreshDesktops(); if (wantUpdate) refreshUpdate(); sendShellHealth(); if (!polling) poll() }
     function poll() {
         polling = true
         request("GET", "/events?since=" + head + "&wait=25000", null, function(st, j) {
@@ -151,6 +156,7 @@ QtObject {
         else if (e.kind === "reveal") revealRequested(String(d.path || ""))
         else if (e.kind === "notice") notice(d)
         else if (e.kind === "notices") refreshNotices()
+        else if (e.kind === "desktops") desktops = d
         else if (e.kind === "automations") automationsChanged()
         else if (e.kind === "connect") connectChanged()
         else if (e.kind === "agents") agentsChanged()

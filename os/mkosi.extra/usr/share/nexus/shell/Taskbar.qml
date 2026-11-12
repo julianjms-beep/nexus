@@ -132,6 +132,24 @@ Window {
         }
     }
 
+    // ---- next to the panther: every window and desktop (Súper+Tab), with the current desktop's number
+    Item {
+        id: taskView
+        x: 58; width: 54; height: parent.height
+        Rectangle {
+            anchors.centerIn: parent
+            width: 48; height: 34; radius: 9
+            color: tvMa.containsMouse ? bar.soft : "transparent"
+            Behavior on color { ColorAnimation { duration: Theme.ms(140) } }
+            Row {
+                anchors.centerIn: parent; spacing: 5
+                LineIcon { anchors.verticalCenter: parent.verticalCenter; name: "layers"; size: 18; stroke: 1.7; color: bar.ink }
+                Text { anchors.verticalCenter: parent.verticalCenter; text: Session.desktops.current; color: bar.ink; font.family: Theme.font; font.pixelSize: 12; font.weight: Font.DemiBold; opacity: 0.85 }
+            }
+        }
+        MouseArea { id: tvMa; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: Session.openPanel("overview") }
+    }
+
     Row {
         anchors.centerIn: parent
         spacing: 4

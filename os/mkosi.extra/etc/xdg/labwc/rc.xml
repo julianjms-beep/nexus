@@ -25,15 +25,41 @@
       <field content="title" width="100%" />
     </fields>
   </windowSwitcher>
+  <!-- four virtual desktops (Súper+1…4, Súper+Ctrl+flechas; Súper+Tab shows every window and desktop). labwc's own
+       switcher popup stays off: the NEXUS shell shows the desktops itself (shell/Overview.qml) -->
+  <desktops>
+    <popupTime>0</popupTime>
+    <names><name>1</name><name>2</name><name>3</name><name>4</name></names>
+  </desktops>
   <keyboard>
     <default />
+    <!-- hidden keys nexus-sessiond presses (wtype) so the compositor does the switching itself: never on a keyboard -->
+    <keybind key="XF86Launch5"><action name="GoToDesktop" to="1" /></keybind>
+    <keybind key="XF86Launch6"><action name="GoToDesktop" to="2" /></keybind>
+    <keybind key="XF86Launch7"><action name="GoToDesktop" to="3" /></keybind>
+    <keybind key="XF86Launch8"><action name="GoToDesktop" to="4" /></keybind>
+    <keybind key="XF86LaunchA"><action name="SendToDesktop" to="1" follow="no" /></keybind>
+    <keybind key="XF86LaunchB"><action name="SendToDesktop" to="2" follow="no" /></keybind>
+    <keybind key="XF86LaunchC"><action name="SendToDesktop" to="3" follow="no" /></keybind>
+    <keybind key="XF86LaunchD"><action name="SendToDesktop" to="4" follow="no" /></keybind>
+    <!-- the person's keys go through nexus-sessiond, which keeps the book of desktops and windows -->
+    <keybind key="W-1"><action name="Execute" command="nexusctl desktop 1" /></keybind>
+    <keybind key="W-2"><action name="Execute" command="nexusctl desktop 2" /></keybind>
+    <keybind key="W-3"><action name="Execute" command="nexusctl desktop 3" /></keybind>
+    <keybind key="W-4"><action name="Execute" command="nexusctl desktop 4" /></keybind>
+    <keybind key="W-C-Left"><action name="Execute" command="nexusctl desktop left" /></keybind>
+    <keybind key="W-C-Right"><action name="Execute" command="nexusctl desktop right" /></keybind>
+    <keybind key="W-S-1"><action name="Execute" command="nexusctl move 1" /></keybind>
+    <keybind key="W-S-2"><action name="Execute" command="nexusctl move 2" /></keybind>
+    <keybind key="W-S-3"><action name="Execute" command="nexusctl move 3" /></keybind>
+    <keybind key="W-S-4"><action name="Execute" command="nexusctl move 4" /></keybind>
     <keybind key="W-space"><action name="Execute" command="nexusctl ui ai" /></keybind>
     <keybind key="A-space"><action name="Execute" command="nexusctl ui ai" /></keybind>
     <!-- Apple keyboards: Option is AltGr there (nexus-session), so Option+Space, Option+Tab and Cmd+Tab are bound too -->
     <keybind key="M-space"><action name="Execute" command="nexusctl ui ai" /></keybind>
     <keybind key="M-Tab"><action name="NextWindow" /></keybind>
     <keybind key="M-S-Tab"><action name="PreviousWindow" /></keybind>
-    <keybind key="W-Tab"><action name="NextWindow" /></keybind>
+    <keybind key="W-Tab"><action name="Execute" command="nexusctl ui overview" /></keybind>
     <keybind key="W-S-Tab"><action name="PreviousWindow" /></keybind>
     <keybind key="W-Return"><action name="Execute" command="nexus-terminal" /></keybind>
     <keybind key="W-e"><action name="Execute" command="nexusctl open files" /></keybind>

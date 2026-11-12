@@ -322,6 +322,49 @@ export function createSession(o: SessionOptions) {
   const running = new Map<string, Set<number>>();          // processes we started
   const windowsOpen = new Set<string>();                     // apps with a window on screen (asked to the compositor)
   const isRunning = (id: string) => windowsOpen.has(id) || (running.get(id)?.size ?? 0) > 0;
+  // ---- virtual desktops and the window overview (shell/Overview.qml, Súper+Tab). labwc keeps the desktops but has
+  // no way to ask about them, so this is NEXUS's own book: which desktop is current (every switch goes through here:
+  // the Súper+1…4 keys run `nexusctl desktop N`), and on which desktop each window lives — a window is noted on the
+  // desktop that was current when it first appeared, and moves when the person moves it here. labwc does the
+  // switching through hidden key bindings (XF86Launch5…8 go to a desktop, XF86LaunchA…D send the active window to
+  // one) that nexus-sessiond presses with wtype: the compositor runs its own actions, nothing is faked.
+  const DESKTOPS = 4;
+  const GO_KEYS = ["XF86Launch5", "XF86Launch6", "XF86Launch7", "XF86Launch8"], SEND_KEYS = ["XF86LaunchA", "XF86LaunchB", "XF86LaunchC", "XF86LaunchD"];
+  let currentDesktop = 1;
+  // two windows can read the same ("foot: Terminal" twice): the book keys them by line and occurrence ("line#0",
+  // "line#1"), so a second terminal opened on desktop 2 is noted there, not where the first one is
+  const windowDesk = new Map<string, number>();   // "app_id: title#n" -> desktop
+  let lastLines: string[] = [];
+  const keyed = (lines: string[]) => { const seen = new Map<string, number>(); return lines.map((l) => { const n = seen.get(l) ?? 0; seen.set(l, n + 1); return `${l}#${n}`; }); };
+  const desktopOf = (key: string) => windowDesk.get(key) ?? currentDesktop;
+  const windowList = () => keyed(lastLines).map((key, i) => { const line = lastLines[i]; return { line, ...describeFocus(line), icon: CATALOG[describeFocus(line).app]?.icon ?? "", focused: line === focusLine, desktop: desktopOf(key) }; });
+  const desktopsView = () => ({ count: DESKTOPS, current: currentDesktop, windows: windowList() });
+  const parseDesktop = (to: unknown): number => {
+    if (to === "left") return currentDesktop > 1 ? currentDesktop - 1 : DESKTOPS;
+    if (to === "right") return currentDesktop < DESKTOPS ? currentDesktop + 1 : 1;
+    const n = Number(to); if (!Number.isInteger(n) || n < 1 || n > DESKTOPS) throw new Error("unknown desktop");
+    return n;
+  };
+  const goToDesktop = (to: unknown) => {
+    const n = parseDesktop(to);
+    if (n !== currentDesktop) { keysFn(["-k", GO_KEYS[n - 1]]); currentDesktop = n; }
+    push("desktops", desktopsView()); return desktopsView();
+  };
+  /** The window with that exact "app_id: title" line: focused, closed, or sent to a desktop (stays there, the view does not follow). */
+  const windowOp = async (line: string, action: string, to?: unknown) => {
+    if (!lastLines.includes(line)) throw new Error("no such window");
+    const i = line.indexOf(": "); const match = [`app_id:${i < 0 ? line : line.slice(0, i)}`, `title:${i < 0 ? "" : line.slice(i + 2)}`];
+    const key = keyed(lastLines)[lastLines.indexOf(line)];   // the first window with that line (wlrctl focuses that one too)
+    if (action === "focus") { const target = desktopOf(key); if (target !== currentDesktop) goToDesktop(target); return { ok: await focusFn(match) }; }
+    if (action === "move") {
+      const n = parseDesktop(to);
+      if (!(await focusFn(match))) return { ok: false };
+      keysFn(["-k", SEND_KEYS[n - 1]]); windowDesk.set(key, n); push("desktops", desktopsView()); return { ok: true };
+    }
+    if (!WINDOW_ACTIONS.includes(action)) throw new Error("unknown window action");
+    if (!(await focusFn(match))) return { ok: false };
+    return { ok: await windowFn(action) };
+  };
   const checkWindows = async () => {
     const lines = await listFn(); if (!lines) return;
     for (const [id, a] of Object.entries(CATALOG)) {
@@ -329,6 +372,13 @@ export function createSession(o: SessionOptions) {
       if (open === was) continue;
       if (open) windowsOpen.add(id); else windowsOpen.delete(id);
       push("app", { app: id, running: isRunning(id) });
+    }
+    const changed = lines.length !== lastLines.length || lines.some((l, i) => l !== lastLines[i]);
+    if (changed) {
+      const keys = keyed(lines);
+      for (const k of keys) if (!windowDesk.has(k)) windowDesk.set(k, currentDesktop);
+      for (const k of [...windowDesk.keys()]) if (!keys.includes(k)) windowDesk.delete(k);
+      lastLines = lines; push("desktops", desktopsView());
     }
   };
   // the menu bar: the active window, told to the shell only when it changes
@@ -890,9 +940,13 @@ export function createSession(o: SessionOptions) {
       }
       if (m === "POST" && p === "/window") {
         const b = await body(req); const action = String(b.action);
+        // with `line`: that window (the overview); without it: the active one (the menu bar)
+        if (typeof b.line === "string") { try { return send(200, await windowOp(b.line, action, b.to)); } catch (e) { return send(400, { error: (e as Error).message }); } }
         if (!WINDOW_ACTIONS.includes(action)) return send(400, { error: "unknown window action" });
         return send(200, { ok: await windowFn(action) });
       }
+      if (m === "GET" && p === "/desktops") { await checkWindows().catch(() => {}); return send(200, desktopsView()); }
+      if (m === "POST" && p === "/desktop") { const b = await body(req); try { return send(200, goToDesktop(b.to)); } catch (e) { return send(400, { error: (e as Error).message }); } }
       if (m === "POST" && p === "/confirm") {
         const b = await body(req);
         const r = await engine("POST", "/api/shell/confirm", { id: String(b.id), approve: b.approve === true });
@@ -903,6 +957,7 @@ export function createSession(o: SessionOptions) {
         // optional `text` (AI panel only): open the panel with that question already asked, e.g. `nexusctl ui ai "¿qué hora es?"`
         const b = await body(req); const panel = String(b.panel);
         if (!["ai", "launcher", "power", "quick", "wifi", "battery", "notices", "center", "overview"].includes(panel)) return send(400, { error: "unknown panel" });
+        if (panel === "overview") await checkWindows().catch(() => {});
         const text = b.text === undefined ? "" : typeof b.text === "string" ? b.text.trim() : null;
         if (text === null || text.length > 500 || (text && panel !== "ai")) return send(400, { error: "invalid text" });
         push("ui", text ? { panel, text } : { panel }); return send(200, { ok: true });

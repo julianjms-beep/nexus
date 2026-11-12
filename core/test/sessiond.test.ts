@@ -904,3 +904,43 @@ test("NEXUS Store → Linux apps: catalogue, an app's page, install for this per
     assert.ok(ran.some((a) => a.includes("--delete-data")));
   } finally { await t.stop(); }
 });
+
+test("virtual desktops: switching presses labwc's hidden keys, windows are noted on the desktop they appeared on, the overview can focus, move and close them", async () => {
+  const keys: string[][] = [];
+  const s = await setup({}, { keysFn: (args: string[]) => keys.push(args), windowFn: async () => true });
+  try {
+    s.win.list = ["foot: Terminal", "org.qt-project.qml: Archivos"]; s.win.open = true;
+    let d = (await s.call("GET", "/desktops")).json;
+    assert.equal(d.current, 1); assert.equal(d.count, 4);
+    assert.deepEqual(d.windows.map((w: any) => [w.name, w.desktop, w.app]), [["Terminal", 1, "terminal"], ["Archivos", 1, "files"]]);
+    // go to desktop 3: one key press, remembered; a window that appears now is on 3
+    d = (await s.call("POST", "/desktop", { to: 3 })).json;
+    assert.equal(d.current, 3); assert.deepEqual(keys.at(-1), ["-k", "XF86Launch7"]);
+    s.win.list = ["foot: Terminal", "org.qt-project.qml: Archivos", "org.qt-project.qml: Notas"];
+    d = (await s.call("GET", "/desktops")).json;
+    assert.deepEqual(d.windows.map((w: any) => [w.title, w.desktop]), [["Terminal", 1], ["Archivos", 1], ["Notas", 3]]);
+    assert.equal((await s.call("POST", "/desktop", { to: "right" })).json.current, 4);
+    assert.equal((await s.call("POST", "/desktop", { to: "right" })).json.current, 1);   // wraps
+    assert.equal((await s.call("POST", "/desktop", { to: 9 })).status, 400);
+    // focusing a window on another desktop switches there first
+    keys.length = 0;
+    assert.equal((await s.call("POST", "/window", { action: "focus", line: "org.qt-project.qml: Notas" })).json.ok, true);
+    assert.deepEqual(keys, [["-k", "XF86Launch7"]]);
+    assert.deepEqual(s.focused.at(-1), ["app_id:org.qt-project.qml", "title:Notas"]);
+    // moving sends the active window with the hidden key and updates the book
+    assert.equal((await s.call("POST", "/window", { action: "move", line: "foot: Terminal", to: 2 })).json.ok, true);
+    assert.deepEqual(keys.at(-1), ["-k", "XF86LaunchB"]);
+    assert.equal((await s.call("GET", "/desktops")).json.windows[0].desktop, 2);
+    assert.equal((await s.call("POST", "/window", { action: "close", line: "foot: Terminal" })).json.ok, true);
+    assert.equal((await s.call("POST", "/window", { action: "close", line: "nope: nope" })).status, 400);
+    assert.equal((await s.call("POST", "/window", { action: "explode", line: "foot: Terminal" })).status, 400);
+    // a second window with the same title, opened on desktop 4, is noted on 4 (the first stays on 2)
+    await s.call("POST", "/desktop", { to: 4 });
+    s.win.list = ["foot: Terminal", "org.qt-project.qml: Archivos", "org.qt-project.qml: Notas", "foot: Terminal"];
+    d = (await s.call("GET", "/desktops")).json;
+    assert.deepEqual(d.windows.filter((w: any) => w.title === "Terminal").map((w: any) => w.desktop), [2, 4]);
+    // a window that is gone leaves the book
+    s.win.list = ["org.qt-project.qml: Archivos"];
+    assert.equal((await s.call("GET", "/desktops")).json.windows.length, 1);
+  } finally { await s.stop(); }
+});

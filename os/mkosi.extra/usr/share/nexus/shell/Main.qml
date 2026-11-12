@@ -20,14 +20,15 @@ QtObject {
     property var start: null
     property var menuBar: null
     property var center: null
+    property var overview: null
 
     // Both desktops are made; Session.layout shows one: "barra" (the Mac-like menu bar on top, the taskbar and start
     // menu at the bottom; the default since 09-11) or "clasico" (top bar + dock). Switching in Ajustes is instant.
-    readonly property var names: ["wallpaper", "topBar", "dock", "toasts", "ai", "power", "confirm", "quick", "taskbar", "start", "menuBar", "center"]
+    readonly property var names: ["wallpaper", "topBar", "dock", "toasts", "ai", "power", "confirm", "quick", "taskbar", "start", "menuBar", "center", "overview"]
     property list<Component> parts: [
         Component { Wallpaper {} }, Component { TopBar {} }, Component { Dock {} }, Component { Toasts {} },
         Component { AiPanel {} }, Component { PowerMenu {} }, Component { ConfirmDialog {} }, Component { QuickSettings {} },
-        Component { Taskbar {} }, Component { StartMenu {} }, Component { MenuBar {} }, Component { NotificationCenter {} }
+        Component { Taskbar {} }, Component { StartMenu {} }, Component { MenuBar {} }, Component { NotificationCenter {} }, Component { Overview {} }
     ]
     property int made: 0
     function build() { if (made === 0 && !maker.running) maker.start() }
@@ -53,7 +54,7 @@ QtObject {
     property Timer fallback: Timer { interval: 600; running: true; onTriggered: root.build() }
 
     // the wallpaper hides its clock while a full-screen panel or dialog is open
-    property Binding overlay: Binding { target: Session; property: "overlay"; value: (!!root.ai && root.ai.shown) || (!!root.confirm && root.confirm.shown) }
+    property Binding overlay: Binding { target: Session; property: "overlay"; value: (!!root.ai && root.ai.shown) || (!!root.confirm && root.confirm.shown) || (!!root.overview && root.overview.shown) }
 
     property Connections bus: Connections {
         target: Session
@@ -63,8 +64,10 @@ QtObject {
             if (root.quick && !qsMode) root.quick.close()   // one panel at a time (its own menus switch in place)
             if (root.start && panel !== "start") root.start.close()
             if (root.center && panel !== "center") root.center.close()
+            if (root.overview && panel !== "overview") root.overview.close()
             if (root.menuBar) root.menuBar.closeMenu()
             if (panel === "start" && root.start) { root.ai.close(); root.power.close(); root.start.toggle() }
+            else if (panel === "overview" && root.overview) { root.ai.close(); root.power.close(); root.overview.toggle() }
             else if (panel === "center" && root.center) { root.ai.close(); root.power.close(); root.center.toggle() }
             else if (panel === "ai" && text) { root.power.close(); root.ai.openAndAsk(text) }
             else if (panel === "ai" || panel === "launcher") { root.power.close(); root.ai.toggle() }
@@ -78,6 +81,7 @@ QtObject {
             if (root.quick) root.quick.close()
             if (root.start) root.start.close()
             if (root.center) root.center.close()
+            if (root.overview) root.overview.close()
             if (root.menuBar) root.menuBar.closeMenu()
             root.confirm.ask(cid, action, reason, origin)
         }
