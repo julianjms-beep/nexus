@@ -70,9 +70,10 @@ def main() -> int:
         with urllib.request.urlopen(req, timeout=180) as r:
             reply = json.load(r)
     except urllib.error.HTTPError as e:
-        reply = {"text": "El motor de NEXUS no responde ahora mismo." if e.code == 503 else f"No he podido responder (error {e.code}).", "error": True}
+        reply = {"text": "El motor de NEXUS no responde: el servicio de NEXUS AI está parado o reiniciándose. Espera unos segundos y repite. No es culpa tuya." if e.code == 503
+                 else f"La sesión de NEXUS ha devuelto un error ({e.code}) al pedir la respuesta. No es cosa tuya: repite la orden.", "error": True}
     except (urllib.error.URLError, TimeoutError, OSError):
-        reply = {"text": "No llego al servicio de la sesión de NEXUS.", "error": True}
+        reply = {"text": "No llego al servicio de la sesión de NEXUS (¿estás dentro de una sesión de escritorio?). No es culpa tuya.", "error": True}
     finally:
         stop.set()
         if spin:

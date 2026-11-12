@@ -9,6 +9,7 @@
 //     action the Engine recorded for that confirmation id.
 //   * The Claude API key lives in <data>/credentials.json (mode 0600, owned by nexus-engine). It is never returned by
 //     the API, never logged, and never put in the audit log. Prompts are not written to the audit log either (only sizes).
+import { describeAiError, whyFromError } from "./ai-errors.ts";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -695,8 +696,7 @@ export class NexusAI {
       this.audit.record("ai.search", { model: msg.model, chars: q.length, searches, results: results.length, inputTokens: inTok, outputTokens: outTok, ...(failed ? { failed } : {}), ...(refused ? { refused } : {}) });
       return { answer: refused ? [] : answer, results, searches, usd, model: msg.model, ...(refused ? { error: "refusal" } : !results.length && failed ? { error: failed } : {}) };
     } catch (e) {
-      const why = e instanceof Anthropic.AuthenticationError ? "auth" : e instanceof Anthropic.RateLimitError ? "rate_limit"
-        : e instanceof Anthropic.APIConnectionError ? "offline" : e instanceof Anthropic.APIError ? `api_${e.status ?? "error"}` : "error";
+      const why = whyFromError(e, e instanceof Anthropic.AuthenticationError, e instanceof Anthropic.RateLimitError, e instanceof Anthropic.APIConnectionError, e instanceof Anthropic.APIError ? e.status : undefined);
       this.audit.record("ai.search", { chars: q.length, error: why });
       return { answer: [], results: [], searches: 0, error: why };
     }
@@ -743,8 +743,7 @@ export class NexusAI {
       }
       return done({ error: "no_draft" });
     } catch (e) {
-      const why = e instanceof Anthropic.AuthenticationError ? "auth" : e instanceof Anthropic.RateLimitError ? "rate_limit"
-        : e instanceof Anthropic.APIConnectionError ? "offline" : e instanceof Anthropic.APIError ? `api_${e.status ?? "error"}` : "error";
+      const why = whyFromError(e, e instanceof Anthropic.AuthenticationError, e instanceof Anthropic.RateLimitError, e instanceof Anthropic.APIConnectionError, e instanceof Anthropic.APIError ? e.status : undefined);
       return done({ error: why });
     }
   }
@@ -785,8 +784,7 @@ export class NexusAI {
       }
       return done({ error: "invalid" });
     } catch (e) {
-      const why = e instanceof Anthropic.AuthenticationError ? "auth" : e instanceof Anthropic.RateLimitError ? "rate_limit"
-        : e instanceof Anthropic.APIConnectionError ? "offline" : e instanceof Anthropic.APIError ? `api_${e.status ?? "error"}` : "error";
+      const why = whyFromError(e, e instanceof Anthropic.AuthenticationError, e instanceof Anthropic.RateLimitError, e instanceof Anthropic.APIConnectionError, e instanceof Anthropic.APIError ? e.status : undefined);
       return done({ error: why });
     }
   }
@@ -812,7 +810,7 @@ export class NexusAI {
       return { text: local.reply, actions, source: "local" };
     }
     const { key } = this.apiKey();
-    if (!key) return { text: "Para preguntas abiertas necesito tu clave de Claude: ponla en Ajustes → NEXUS AI. Sin clave puedo abrir apps, decirte la hora, la memoria o el disco, y apagar o reiniciar.", actions: [], source: "local", error: "not_configured" };
+    if (!key) return { text: "Para preguntas abiertas necesito tu clave de Claude: ponla en Ajustes → NEXUS AI. Sin clave puedo abrir apps, decirte la hora, la memoria o el disco, y apagar o reiniciar.", actions: [], source: "local", error: "not_configured", error: "not_configured", fix: "settings-ai", title: "NEXUS AI todavía no tiene clave" };
     return this.askClaude(q, Array.isArray(history) ? history : [], key, ctx);
   }
 
@@ -852,15 +850,10 @@ export class NexusAI {
         messages.push({ role: "user", content: uses.map((u) => this.runTool(u, actions, ctx)) });
       }
     } catch (e) {
-      const why = e instanceof Anthropic.AuthenticationError ? "auth" : e instanceof Anthropic.RateLimitError ? "rate_limit"
-        : e instanceof Anthropic.APIConnectionError ? "offline" : e instanceof Anthropic.APIError ? `api_${e.status ?? "error"}` : "error";
+      const why = whyFromError(e, e instanceof Anthropic.AuthenticationError, e instanceof Anthropic.RateLimitError, e instanceof Anthropic.APIConnectionError, e instanceof Anthropic.APIError ? e.status : undefined);
       this.audit.record("ai.ask", { source: "claude", chars: q.length, error: why });
-      const msgs: Record<string, string> = {
-        auth: "La clave de Claude no es válida. Revísala en Ajustes → NEXUS AI.",
-        rate_limit: "Claude está saturado ahora mismo. Inténtalo en unos segundos.",
-        offline: "No hay conexión con Claude. ¿Está conectado a Internet?",
-      };
-      return { text: msgs[why] ?? "Algo ha fallado al hablar con Claude. Inténtalo otra vez.", actions, source: "claude", model, error: why };
+      const t = describeAiError(why, (e as Error)?.message ?? "");
+      return { text: `${t.title}. ${t.text}`, actions, source: "claude", model, error: t.why, fix: t.fix, title: t.title };
     }
     this.audit.record("ai.ask", { source: "claude", model, chars: q.length, page: !!ctx.page, output: !!ctx.output, inputTokens: inTok, outputTokens: outTok, actions: actions.map((a) => a.kind) });
     return { text: text || (actions.length ? "Hecho." : "…"), actions, source: "claude", model, tokens: { input: inTok, output: outTok } };

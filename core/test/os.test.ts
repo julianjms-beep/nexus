@@ -190,7 +190,7 @@ test("API errors map to friendly messages using the SDK's typed errors", async (
     await s.call("POST", "/api/ai/key", { key: KEY });
     const r = await s.call("POST", "/api/ai/ask", { text: "una pregunta abierta cualquiera" });
     assert.equal(r.json.error, "auth");
-    assert.match(r.json.text, /clave de Claude no es válida/);
+    assert.match(r.json.text, /Claude no acepta la clave/); assert.equal(r.json.fix, "settings-ai");
   } finally { await s.stop(); }
 });
 

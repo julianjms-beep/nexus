@@ -152,6 +152,7 @@ Window {
             chat.setProperty(i, "pending", false)
             chat.setProperty(i, "body", String(r.text || ""))
             chat.setProperty(i, "note", panel.describe(r.actions) + (r.source === "claude" && r.model ? (panel.describe(r.actions) ? " · " : "") + "Claude" : ""))
+            if (r.error) { chat.setProperty(i, "plan", JSON.stringify({ fix: r.fix || "retry", why: r.error, asked: t })); chat.setProperty(i, "phase", "aierror") }
             var launched = false
             for (var k = 0; k < (r.actions || []).length; k++) {
                 if (r.actions[k].kind === "launch" || r.actions[k].kind === "automation") launched = true
@@ -375,7 +376,7 @@ Window {
                         readonly property bool mine: who === "user"
                         readonly property real maxW: chatView.width * 0.80 - (mine ? 0 : 46)
                         readonly property var info: plan ? JSON.parse(plan) : null
-                        readonly property bool hasExtra: info !== null && (phase === "proposed" || phase === "working" || (phase === "done" && info.moved > 0))
+                        readonly property bool hasExtra: info !== null && (phase === "proposed" || phase === "working" || (phase === "done" && info.moved > 0) || (phase === "aierror" && info.fix !== "none"))
                         width: chatView.width
                         height: bubble.y + bubble.height + (noteLabel.visible ? noteLabel.height + 4 : 0) + (hasExtra ? extra.height + 12 : 0)
                         // NEXUS AI's answers carry its tile and name, like the concept art
@@ -447,7 +448,16 @@ Window {
                             x: 66; width: row.width - 66 - 20
                             y: bubble.y + bubble.height + (noteLabel.visible ? noteLabel.height + 4 : 0) + 12
                             spacing: 12
+                            // what to do when Claude could not answer (the words come from the Engine: core/src/ai-errors.ts)
+                            Row {
+                                visible: row.phase === "aierror"
+                                spacing: 10
+                                ActionButton { visible: row.info && row.info.fix === "settings-ai"; primary: true; label: "Abrir Ajustes → NEXUS AI"; onClicked: { Session.openSettings("ai"); panel.close() } }
+                                ActionButton { visible: row.info && row.info.fix === "network"; primary: true; label: "Abrir Ajustes → Wi-Fi"; onClicked: { Session.openSettings("wifi"); panel.close() } }
+                                ActionButton { visible: row.info && (row.info.fix === "retry" || row.info.fix === "wait" || row.info.fix === "network"); primary: row.info && row.info.fix !== "network"; label: "Reintentar"; onClicked: panel.ask(row.info.asked) }
+                            }
                             Flow {
+                                visible: row.phase !== "aierror"
                                 width: parent.width; spacing: 8
                                 Chip { visible: row.phase === "done"; icon: "open"; label: "Abrió Archivos" }
                                 Chip { visible: row.phase !== "done"; icon: "folder"; label: row.info ? row.info.place : "" }

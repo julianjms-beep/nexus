@@ -210,7 +210,7 @@ QtObject {
         var hist = history.slice(-12)
         request("POST", "/ai", { text: text, history: hist }, function(st, j) {
             if (st === 200 && j) { s.history = hist.concat([{ role: "user", text: text }, { role: "assistant", text: String(j.text || "") }]); cb(true, j) }
-            else cb(false, { text: st === 503 ? "El motor de NEXUS no responde ahora mismo. Vuelve a intentarlo en unos segundos." : "No he podido responder (error " + st + ").", actions: [] })
+            else cb(false, { text: st === 503 || st === 0 ? "El motor de NEXUS no responde. El servicio de NEXUS AI está parado o reiniciándose: espera unos segundos y vuelve a intentarlo. No es culpa tuya." : "La sesión de NEXUS ha devuelto un error (" + st + ") al pedir la respuesta. No es cosa tuya: inténtalo otra vez.", actions: [], error: st === 503 || st === 0 ? "engine_down" : "session_" + st, fix: "retry" })
         })
     }
 
