@@ -193,9 +193,19 @@ Window {
         }
         // network, battery, quick settings and the clock are in the menu bar above (MenuBar.qml), as on a Mac
         TrayButton {
-            visible: Session.prefs.dnd === true
-            onClicked: Session.openPanel("quick")
-            LineIcon { anchors.verticalCenter: parent.verticalCenter; name: "bell-off"; size: 16; color: bar.ink }
+            onClicked: Session.openPanel("center")
+            Item {
+                anchors.verticalCenter: parent.verticalCenter
+                width: 20; height: 20
+                LineIcon { anchors.centerIn: parent; name: Session.prefs.dnd === true ? "bell-off" : "bell"; size: 17; stroke: 1.7; color: bar.ink }
+                Rectangle {
+                    visible: Session.unread > 0 && Session.prefs.dnd !== true
+                    x: 11; y: -2
+                    width: Math.max(14, tbadge.implicitWidth + 7); height: 14; radius: 7
+                    color: Theme.danger
+                    Text { id: tbadge; anchors.centerIn: parent; text: Session.unread > 99 ? "99" : Session.unread; color: "#ffffff"; font.family: Theme.font; font.pixelSize: 9; font.weight: Font.Bold }
+                }
+            }
         }
         TrayButton {
             onClicked: Session.power("lock")

@@ -12,5 +12,7 @@ case "${1:-help}" in
   ui)     shift; p="${1:-ai}"; [ $# -gt 0 ] && shift
           if [ $# -gt 0 ]; then d="{\"panel\":\"$(json "$p")\",\"text\":\"$(json "$*")\"}"; else d="{\"panel\":\"$(json "$p")\"}"; fi
           curl -fsS -H "Authorization: Bearer $(stok)" -H 'Content-Type: application/json' -d "$d" "$SESSION/ui" >/dev/null ;;
-  *) echo "usage: nexusctl status | ask <text> | open <terminal|files|editor|monitor|settings> | ui <ai|launcher|power> [question for the AI panel]" ;;
+  notify) shift; t="${1:?text}"; shift; k="${1:-info}"; a="${2:-}"
+          curl -fsS -H "Authorization: Bearer $(stok)" -H 'Content-Type: application/json' -d "{\"text\":\"$(json "$t")\",\"kind\":\"$(json "$k")\",\"app\":\"$(json "$a")\"}" "$SESSION/notices/add" >/dev/null ;;
+  *) echo "usage: nexusctl status | ask <text> | open <terminal|files|editor|monitor|settings> | ui <ai|launcher|power|center|overview> [question for the AI panel] | notify <text> [info|good|warn] [app]" ;;
 esac

@@ -16,14 +16,25 @@ QtObject {
     onWallpaperChanged: Theme.wallLight = !!wallpaper && wallpaper.ink === "dark"
     // NEXUS Update (nexus-updated through nexus-sessiond): Ajustes → Actualizaciones. {unavailable:true} when it is down.
     property var update: null
-    // the last notices (newest first), for Ajustes rápidos: nothing is lost when a toast fades or No molestar is on
-    property var recent: []
-    function notice(text, kind) {
-        if (!text) return
-        recent = [{ text: text, kind: kind, at: Date.now() }].concat(recent).slice(0, 8)
-        if (prefs.dnd !== true || kind === "warn") toast(text, kind)
+    // the notification centre (nexus-sessiond keeps them on disk, newest first): nothing is lost when a toast fades,
+    // No molestar is on or the shell restarts. `unread` is the bell's badge.
+    property var notices: []
+    property int unread: 0
+    readonly property var recent: notices.slice(0, 8)
+    function notice(d) {
+        if (!d || !d.text) return
+        if (d.id !== undefined) {
+            var rest = notices.filter(function(n) { return n.id !== d.id })
+            notices = [d].concat(rest).slice(0, 200)
+            unread = notices.filter(function(n) { return !n.read }).length
+        }
+        if (prefs.dnd !== true || d.kind === "warn") toast(String(d.text), String(d.kind || "info"))
     }
-    function clearRecent() { recent = [] }
+    function refreshNotices() { request("GET", "/notices", null, function(st, j) { if (st === 200 && j) { s.notices = j.notices || []; s.unread = Number(j.unread) || 0 } }) }
+    function readNotices(id) { request("POST", "/notices/read", id === undefined ? {} : { id: id }, function() { s.refreshNotices() }) }
+    function deleteNotice(id) { request("POST", "/notices/delete", { id: id }, function() { s.refreshNotices() }) }
+    function clearRecent() { request("POST", "/notices/clear", {}, function() { s.refreshNotices() }) }
+    signal centerRequested()   // the bell: open the centre (Main.qml)
     // the shell's own health (Main.qml), sent now and again after every reconnect (a restarted nexus-sessiond)
     property var shellHealth: null
     function reportShell(parts, failed) { shellHealth = { parts: parts, failed: failed }; sendShellHealth() }
@@ -112,7 +123,7 @@ QtObject {
         if (body !== undefined && body !== null) { x.setRequestHeader("Content-Type", "application/json"); x.send(JSON.stringify(body)) }
         else x.send()
     }
-    function begin() { refreshMe(); refreshFocus(); refreshApps(); refreshPrefs(); refreshSystem(); refreshTasks(); refreshWeather(); refreshWallpaper(); if (wantUpdate) refreshUpdate(); sendShellHealth(); if (!polling) poll() }
+    function begin() { refreshMe(); refreshFocus(); refreshApps(); refreshPrefs(); refreshSystem(); refreshTasks(); refreshWeather(); refreshWallpaper(); refreshNotices(); if (wantUpdate) refreshUpdate(); sendShellHealth(); if (!polling) poll() }
     function poll() {
         polling = true
         request("GET", "/events?since=" + head + "&wait=25000", null, function(st, j) {
@@ -138,7 +149,8 @@ QtObject {
         else if (e.kind === "tasks") tasks = d.tasks || []
         else if (e.kind === "files") { filesChanged(); if (d.gone && d.gone.length) foldersGone(d.gone) }
         else if (e.kind === "reveal") revealRequested(String(d.path || ""))
-        else if (e.kind === "notice") notice(String(d.text || ""), String(d.kind || "info"))
+        else if (e.kind === "notice") notice(d)
+        else if (e.kind === "notices") refreshNotices()
         else if (e.kind === "automations") automationsChanged()
         else if (e.kind === "connect") connectChanged()
         else if (e.kind === "agents") agentsChanged()
@@ -149,7 +161,7 @@ QtObject {
         else if (e.kind === "wallpaper") wallpaper = d
         else if (e.kind === "update") update = d
         else if (e.kind === "security") securityChanged()
-        else if (e.kind === "engine") { engineUp = !!d.up; if (!d.up) notice("El motor de NEXUS se está reiniciando…", "warn") }
+        else if (e.kind === "engine") { engineUp = !!d.up; if (!d.up) toast("El motor de NEXUS se está reiniciando…", "warn") }
     }
     function applyPrefs() {
         Theme.dark = prefs.theme !== "light"

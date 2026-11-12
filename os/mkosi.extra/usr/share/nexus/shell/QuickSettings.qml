@@ -81,6 +81,7 @@ Window {
     function cap(s) { s = String(s || ""); return s.charAt(0).toUpperCase() + s.slice(1) }
     function dur(min) { var h = Math.floor(min / 60), m = Math.round(min % 60); return h ? h + " h " + (m < 10 ? "0" : "") + m + " min" : m + " min" }
     function ago(t) {
+        if (typeof t === "string") t = Date.parse(t)
         var s = Math.max(0, Math.round((Session.now.getTime() - t) / 1000))
         return s < 60 ? "ahora" : s < 3600 ? "hace " + Math.round(s / 60) + " min" : Qt.formatTime(new Date(t), "HH:mm")
     }
@@ -119,7 +120,7 @@ Window {
     }
     function post(path, body, done) {
         Session.request("POST", path, body, function(st, j) {
-            if (st !== 200) { Session.notice(qs.cap(j && j.error ? j.error : "no se ha podido hacer"), "warn"); qs.lastChange = 0 }
+            if (st !== 200) { Session.toast(qs.cap(j && j.error ? j.error : "no se ha podido hacer"), "warn"); qs.lastChange = 0 }
             soon.restart()
             if (done) done(st, j)
         })
@@ -967,10 +968,10 @@ Window {
                 width: parent.width; height: 20
                 Text { anchors.verticalCenter: parent.verticalCenter; text: "Avisos"; color: Theme.text; font.family: Theme.font; font.pixelSize: 13; font.weight: Font.Bold }
                 Text {
-                    visible: Session.recent.length > 0
                     anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter
-                    text: "Borrar"; color: ca.containsMouse ? Theme.text : Theme.dim; font.family: Theme.font; font.pixelSize: 12
-                    MouseArea { id: ca; anchors.fill: parent; anchors.margins: -6; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: Session.clearRecent() }
+                    text: Session.notices.length > 0 ? "Ver todos (" + Session.notices.length + ")" : "Abrir el centro"
+                    color: ca.containsMouse ? Theme.text : Theme.dim; font.family: Theme.font; font.pixelSize: 12
+                    MouseArea { id: ca; anchors.fill: parent; anchors.margins: -6; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: { qs.close(); Session.openPanel("center") } }
                 }
             }
             Text {

@@ -117,7 +117,7 @@ Window {
     // another of those icons opens its menu in place, an app menu opens; anything else just closes the open one
     function hitStatus(x, y) {
         if (!mb.visible || y >= mb.height) return false
-        var all = [aiS, power, wifiS, ccS, clockS]
+        var all = [aiS, power, wifiS, ccS, bellS, clockS]
         for (var i = 0; i < all.length; i++) {
             var p = all[i].mapToItem(null, 0, 0)
             if (x >= p.x && x < p.x + all[i].width) { all[i].clicked(); return true }
@@ -184,6 +184,22 @@ Window {
             id: ccS
             onClicked: Session.openPanelAt("quick", ccS)
             LineIcon { anchors.verticalCenter: parent.verticalCenter; name: "sliders"; size: 17; stroke: 1.6; color: mb.ink }
+        }
+        Status {
+            id: bellS
+            onClicked: Session.openPanel("center")
+            Item {
+                anchors.verticalCenter: parent.verticalCenter
+                width: 20; height: 20
+                LineIcon { anchors.centerIn: parent; name: Session.prefs.dnd === true ? "bell-off" : "bell"; size: 17; stroke: 1.7; color: mb.ink }
+                Rectangle {
+                    visible: Session.unread > 0 && Session.prefs.dnd !== true
+                    x: 11; y: -2
+                    width: Math.max(14, badge.implicitWidth + 7); height: 14; radius: 7
+                    color: Theme.danger
+                    Text { id: badge; anchors.centerIn: parent; text: Session.unread > 99 ? "99" : Session.unread; color: "#ffffff"; font.family: Theme.font; font.pixelSize: 9; font.weight: Font.Bold }
+                }
+            }
         }
         Status {
             id: clockS

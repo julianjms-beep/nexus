@@ -27,6 +27,7 @@ import { Store, profileName } from "./store.ts";
 import { Mail, MailError } from "./mail.ts";
 import { PROVIDERS, isProvider, checkKey, providerSearch, SearchError, wikiSearchUrl, parseWikiSearch, calc, answerRequest, parseAnswer, ANSWER_MODEL, type ProviderId, type WebResult } from "./websearch.ts";
 import { PageIndex, settingsMatches, tokenize, fold, wikiQueryUrl, parseWiki, suggestUrl, parseSuggest } from "./search.ts";
+import { Notices, checkNotice } from "./notices.ts";
 
 // `window`: wlrctl match spec (exact app_id / title) of the app's window, used to bring an already open (or minimized)
 // window to the front instead of starting a second copy.
@@ -284,7 +285,11 @@ export function createSession(o: SessionOptions) {
 
   // ---- local event buffer for the shell
   let seq = 0; const events: Ev[] = []; const waiters = new Set<() => void>();
+  // the notification centre's memory (core/src/notices.ts): every "notice" event is kept there, with an id, so the
+  // bell in the bar and shell/NotificationCenter.qml show what came before this shell started
+  const notices = new Notices(path.join(o.dataDir ?? path.join(o.homeDir ?? process.env.HOME ?? os.homedir(), ".local", "share"), "nexus", "notices.json"));
   const push = (kind: string, data: Record<string, unknown>) => {
+    if (kind === "notice") { try { data = { ...notices.add(data as { text: unknown }) }; } catch { return; } }
     events.push({ seq: ++seq, kind, data }); if (events.length > 200) events.splice(0, events.length - 200);
     for (const w of waiters) w(); waiters.clear();
   };
@@ -489,7 +494,7 @@ export function createSession(o: SessionOptions) {
     let sock: net.Socket | null = null, buf = "", nextId = 1, retry: ReturnType<typeof setTimeout> | undefined;
     let last: Record<string, any> | null = null;
     const pending = new Map<number, { ok: (v: unknown) => void; fail: (e: Error) => void; t: ReturnType<typeof setTimeout> }>();
-    const said = (t: string, kind = "info") => push("notice", { text: t, kind });
+    const said = (t: string, kind = "info") => push("notice", { text: t, kind, app: "update" });
     const publish = (d: Record<string, any>) => {
       const was = last?.state;
       last = d; push("update", d);
@@ -659,7 +664,7 @@ export function createSession(o: SessionOptions) {
     services,
     configDir: o.configDir, home: o.homeDir ?? process.env.HOME ?? os.homedir(), runtimeDir: o.runtimeDir,
     apps: Object.fromEntries(installedApps().map(([id, a]) => [id, a.name])),
-    notice: (text, kind) => push("notice", { text, kind }),
+    notice: (text, kind) => push("notice", { text, kind, app: "automations" }),
     changed: () => push("automations", {}),
     launch: (app) => { launch(app, "automation").catch(() => { /* not in catalog */ }); },
   });
@@ -679,7 +684,7 @@ export function createSession(o: SessionOptions) {
   const agents = new Agents({
     configDir: o.configDir, dataDir: path.join(o.dataDir ?? path.join(homeDir, ".local", "share"), "nexus", "agentes"), home: homeDir,
     port: () => listenPort, runtimeDirs: ["/run/user", "/run/nexus", "/run/dbus"], // agents never reach the session or system bus
-    push, notice: (text, kind) => push("notice", { text, kind }),
+    push, notice: (text, kind) => push("notice", { text, kind, app: "agents" }),
     launch: (app) => { launch(app, "agent").catch(() => { /* not in catalog */ }); },
     review: async (diff, role) => { const r = await engine("POST", "/api/ai/review", { diff, role }, 150_000); if (r.status !== 200) throw new Error(`motor ${r.status}`); return r.json; },
     // the agent's Claude requests leave through the Engine, which adds the person's key (agents never get it)
@@ -729,7 +734,7 @@ export function createSession(o: SessionOptions) {
       return connectCall(`/api/connect/${encodeURIComponent(c)}/run`, { op, input, origin: "agencia" }, 60_000);
     },
     catalog: () => connectCatalog,
-    notice: (text, kind) => push("notice", { text, kind }),
+    notice: (text, kind) => push("notice", { text, kind, app: "agents" }),
     changed: (id) => push("agency", { id }),
   });
 
@@ -742,7 +747,7 @@ export function createSession(o: SessionOptions) {
   const webCache = new Map<string, { at: number; reply: unknown }>(); // the same search again within 30 min costs nothing
   const searchQuery = (url: URL) => String(url.searchParams.get("q") ?? "").replace(/\s+/g, " ").trim().slice(0, 300);
   // ---- NEXUS Mail (core/src/mail.ts): IMAP/SMTP accounts with app passwords; NEXUS AI summarises and drafts
-  const mail = new Mail({ file: path.join(o.configDir, "mail-accounts.json"), run: o.mailRun, claude: (b, ms) => claudeViaEngine(b, ms), notify: (text) => push("notice", { text, kind: "info" }) });
+  const mail = new Mail({ file: path.join(o.configDir, "mail-accounts.json"), run: o.mailRun, claude: (b, ms) => claudeViaEngine(b, ms), notify: (text) => push("notice", { text, kind: "info", app: "mail" }) });
   let mailTimer: ReturnType<typeof setInterval> | undefined;
   // ---- NEXUS Store (core/src/store.ts): web apps, each in its own window with its own session
   const store = new Store(path.join(o.configDir, "webapps.json"));
@@ -869,11 +874,23 @@ export function createSession(o: SessionOptions) {
       if (m === "POST" && p === "/ui") {
         // optional `text` (AI panel only): open the panel with that question already asked, e.g. `nexusctl ui ai "¿qué hora es?"`
         const b = await body(req); const panel = String(b.panel);
-        if (!["ai", "launcher", "power", "quick", "wifi", "battery", "notices"].includes(panel)) return send(400, { error: "unknown panel" });
+        if (!["ai", "launcher", "power", "quick", "wifi", "battery", "notices", "center", "overview"].includes(panel)) return send(400, { error: "unknown panel" });
         const text = b.text === undefined ? "" : typeof b.text === "string" ? b.text.trim() : null;
         if (text === null || text.length > 500 || (text && panel !== "ai")) return send(400, { error: "invalid text" });
         push("ui", text ? { panel, text } : { panel }); return send(200, { ok: true });
       }
+      // ---- the notification centre: what was shown, newest first; read marks, delete, clear; `add` for scripts
+      // (`nexusctl notify`) and the D-Bus bridge, so a Linux app's notification lands in the same place
+      if (m === "GET" && p === "/notices") return send(200, { notices: notices.list(), unread: notices.unread() });
+      if (m === "POST" && p === "/notices/add") {
+        const b = await body(req);
+        try { checkNotice(b); } catch { return send(400, { error: "empty notice" }); }
+        push("notice", { text: b.text, kind: b.kind, app: b.app, title: b.title });
+        return send(200, { ok: true, notice: notices.list()[0] });
+      }
+      if (m === "POST" && p === "/notices/read") { const b = await body(req); notices.markRead(b.id === undefined ? undefined : Number(b.id)); push("notices", { unread: notices.unread() }); return send(200, { ok: true, unread: notices.unread() }); }
+      if (m === "POST" && p === "/notices/delete") { const b = await body(req); const ok = notices.remove(Number(b.id)); push("notices", { unread: notices.unread() }); return send(ok ? 200 : 404, ok ? { ok: true } : { error: "no such notice" }); }
+      if (m === "POST" && p === "/notices/clear") { notices.clear(); push("notices", { unread: 0 }); return send(200, { ok: true }); }
       if (m === "GET" && p === "/prefs") return send(200, readPrefs());
       if (m === "GET" && p === "/me") { let pw = ""; try { pw = fs.readFileSync("/etc/passwd", "utf8"); } catch { /* none */ } return send(200, whoAmI(pw, os.userInfo().username)); }
       if (m === "GET" && p === "/wallpaper") return send(200, publishWallpaper());
@@ -908,7 +925,7 @@ export function createSession(o: SessionOptions) {
         try {
           const facts = await securityAct(b && typeof b === "object" ? b : {});
           push("security", {});
-          if (b.action === "password") push("notice", { text: "Contraseña cambiada.", kind: "good" });
+          if (b.action === "password") push("notice", { text: "Contraseña cambiada.", kind: "good", app: "security" });
           return send(200, await securityView(facts));
         } catch (e) {
           const code = String((e as { code?: string }).code ?? "failed");
