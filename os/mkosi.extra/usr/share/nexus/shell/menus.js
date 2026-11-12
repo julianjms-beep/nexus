@@ -35,7 +35,8 @@ function windowMenu() {
 function help(name) {
     return { title: "Ayuda", items: [
         { label: "Preguntar a NEXUS AI sobre " + name + "…", act: { ask: "¿Cómo hago en " + name + " para " } },
-        { label: "Preguntar a NEXUS AI…", act: { panel: "ai" }, hint: "super+space" }
+        { label: "Preguntar a NEXUS AI…", act: { panel: "ai" }, hint: "super+space" }, SEP,
+        { label: "Recorrido de bienvenida", act: { panel: "welcome" } }
     ] };
 }
 

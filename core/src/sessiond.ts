@@ -129,6 +129,7 @@ const PREF_KEYS: Record<string, (v: unknown) => boolean> = {
   scale: (v) => v === "auto" || v === 1 || v === 1.25 || v === 1.5 || v === 2,   // interface size (nexus-display)
   animations: (v) => typeof v === "boolean",   // window animations (labwc) and the desktop's own motion
   dnd: (v) => typeof v === "boolean",          // No molestar: notices only go to Ajustes rápidos (warnings still show)
+  welcomed: (v) => typeof v === "boolean",     // the welcome tour (shell/Welcome.qml) was seen or skipped once
   layout: (v) => v === "barra" || v === "clasico",   // the desktop: one bar at the bottom (default) or top bar + dock
   searchWeb: (v) => v === "auto" || v === "manual" || v === "off",   // NEXUS Search: Claude's web results on every search, on request, or never
   searchMemory: (v) => typeof v === "boolean",   // NEXUS Search remembers the pages visited (only on this computer)
@@ -973,7 +974,7 @@ export function createSession(o: SessionOptions) {
       if (m === "POST" && p === "/ui") {
         // optional `text` (AI panel only): open the panel with that question already asked, e.g. `nexusctl ui ai "¿qué hora es?"`
         const b = await body(req); const panel = String(b.panel);
-        if (!["ai", "launcher", "power", "quick", "wifi", "battery", "notices", "center", "overview", "start"].includes(panel)) return send(400, { error: "unknown panel" });
+        if (!["ai", "launcher", "power", "quick", "wifi", "battery", "notices", "center", "overview", "start", "welcome"].includes(panel)) return send(400, { error: "unknown panel" });
         if (panel === "overview") await checkWindows().catch(() => {});
         const text = b.text === undefined ? "" : typeof b.text === "string" ? b.text.trim() : null;
         if (text === null || text.length > 500 || (text && panel !== "ai")) return send(400, { error: "invalid text" });

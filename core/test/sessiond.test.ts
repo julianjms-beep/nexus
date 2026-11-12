@@ -969,3 +969,14 @@ test("the account's photo comes from the person's own files and the keyboard lay
     assert.match(fs.readFileSync(path.join(s.dir, "cfg", "..", "labwc", "environment"), "utf8"), /^XKB_DEFAULT_LAYOUT=us$/m);
   } finally { await s.stop(); }
 });
+
+test("the welcome tour is remembered as a preference and can be opened as a panel", async () => {
+  const s = await setup();
+  try {
+    assert.equal((await s.call("GET", "/prefs")).json.welcomed, undefined);
+    assert.equal((await s.call("POST", "/prefs", { welcomed: true })).json.welcomed, true);
+    assert.equal((await s.call("POST", "/prefs", { welcomed: "yes" })).status, 400);
+    assert.equal((await s.call("POST", "/ui", { panel: "welcome" })).status, 200);
+    assert.ok((await s.events()).some((e) => e.kind === "ui" && e.data.panel === "welcome"));
+  } finally { await s.stop(); }
+});
