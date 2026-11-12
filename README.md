@@ -88,3 +88,7 @@ Node 24 for development (the engine runs TypeScript directly); Node 20 or newer 
 Known limits are written down, not hidden: the threat model and what does not hold yet are in
 [SECURITY.md](SECURITY.md), which also says how to report a way through. Where the project stands and what comes
 next: [ROADMAP.md](ROADMAP.md).
+
+## License
+
+Apache License 2.0. See [LICENSE](LICENSE).
