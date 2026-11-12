@@ -358,6 +358,27 @@ test("lock screen card: a greeting by the hour, how many tasks are open and the 
   } finally { await s.stop(); }
 });
 
+test("the lock: /lockinfo marks the screen locked, the account photo goes to the lock screen, unlock is noticed", async () => {
+  const lock = { on: false };
+  const s = await setup({}, { lockRunning: () => lock.on, lockPollMs: 20 });
+  try {
+    assert.equal((await s.call("GET", "/lock")).json.locked, false);
+    // a picture of the person's own becomes the account photo, and the lock screen is told where it is
+    fs.writeFileSync(path.join(s.home, "yo.png"), Buffer.from("89504e470d0a1a0a", "hex"));
+    assert.equal((await s.call("POST", "/me/photo", { path: path.join(s.home, "yo.png") })).status, 200);
+    lock.on = true;
+    const text = await (await fetch(`http://127.0.0.1:${s.port}/lockinfo`, { headers: { authorization: `Bearer ${s.sess.token}` } })).text();
+    assert.match(text, /\nphoto=\/.+\/cfg\/avatar\.png\n$/);
+    assert.equal((await s.call("GET", "/lock")).json.locked, true);
+    await until(async () => (await s.events()).some((e) => e.kind === "lock" && e.data.locked === true));
+    await sleep(80);
+    assert.equal((await s.call("GET", "/lock")).json.locked, true); // still there: still locked
+    lock.on = false;
+    await until(async () => (await s.events()).some((e) => e.kind === "lock" && e.data.locked === false));
+    assert.equal((await s.call("GET", "/lock")).json.locked, false);
+  } finally { await s.stop(); }
+});
+
 test("window title bars follow the theme: NEXUS writes labwc's override for light and removes only its own file", async () => {
   const s = await setup();
   const f = path.join(s.dir, "labwc", "themerc-override");

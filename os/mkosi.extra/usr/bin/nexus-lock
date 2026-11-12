@@ -19,7 +19,7 @@ initial=$(printf '%s' "$name" | sed 's/^\(.\).*/\U\1/')
 
 # clock style and the NEXUS AI card from the desktop session (quietly skipped if it is not running).
 # The token goes to curl on stdin, never on its command line.
-clock24=1 greeting= wall= wallcolor= wallink=light
+clock24=1 greeting= wall= wallcolor= wallink=light photo=
 if tok=$(cat "$RUN/session.token" 2>/dev/null); then
   info=$(printf 'Authorization: Bearer %s\n' "$tok" | curl -fsS -m 2 -H @- http://127.0.0.1:7779/lockinfo 2>/dev/null) || info=
   clock24=$(printf '%s\n' "$info" | sed -n 's/^clock24=//p')
@@ -28,7 +28,11 @@ if tok=$(cat "$RUN/session.token" 2>/dev/null); then
   wall=$(printf '%s\n' "$info" | sed -n 's/^wallpaper=//p')
   wallcolor=$(printf '%s\n' "$info" | sed -n 's/^wallpaper_color=\(#[0-9a-fA-F]\{6\}\)$/\1/p')
   [ "$(printf '%s\n' "$info" | sed -n 's/^wallpaper_ink=//p')" = dark ] && wallink=dark
+  # the account's photo (Ajustes → Cuenta): it fills the round avatar instead of the initial
+  photo=$(printf '%s\n' "$info" | sed -n 's/^photo=//p')
 fi
+case "${photo:-}" in *'"'*|*'\'*) photo= ;; esac
+[ -n "${photo:-}" ] && [ -r "$photo" ] && initial= || photo=
 if [ "$clock24" = 0 ]; then tf='%-I:%M'; else tf='%H:%M'; fi
 
 # the Monitor card: services that stopped with an error (the system's and this session's); no card if unreadable
@@ -81,6 +85,12 @@ if [ -n "$wall" ] && [ -r "$wall" ] || [ -n "$wallcolor" ]; then
     printf '#clock-label { color: #ffffff; text-shadow: 0 2px 22px rgba(0, 0, 0, 0.28); }\n'
     printf '#date-label { color: rgba(255, 255, 255, 0.90); text-shadow: 0 1px 12px rgba(0, 0, 0, 0.30); }\n'
   } > "$RUN/lock-style-wall.css" && style="$RUN/lock-style-wall.css"
+fi
+
+# the photo, cut round by the avatar's own border-radius
+if [ -n "$photo" ]; then
+  { cat "$style"; printf '#nexus-avatar { background-image: url("%s"); background-size: cover; background-position: center; }\n' "$photo"; } \
+    > "$RUN/lock-style-photo.css" && style="$RUN/lock-style-photo.css"
 fi
 
 # -d: return once the screen is locked. Its output goes to a log, so no caller waits on the open pipe until unlock.

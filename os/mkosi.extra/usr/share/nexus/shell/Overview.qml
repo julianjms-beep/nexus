@@ -86,11 +86,12 @@ Window {
             Repeater {
                 model: ov.d.count
                 Rectangle {
+                    id: tile
                     required property int index
                     readonly property int n: index + 1
                     readonly property bool current: n === ov.d.current
                     readonly property bool chosen: n === ov.showing
-                    readonly property int count: ov.onDesk(n).length
+                    readonly property int wins: ov.onDesk(n).length
                     width: 190; height: 112; radius: 14
                     color: chosen ? Theme.alpha(Theme.accent, 0.22) : dMa.containsMouse ? Qt.rgba(1, 1, 1, 0.10) : Qt.rgba(1, 1, 1, 0.06)
                     border.color: current ? Theme.accent : chosen ? Theme.alpha(Theme.accent, 0.6) : Qt.rgba(1, 1, 1, 0.14)
@@ -100,7 +101,7 @@ Window {
                     Flow {
                         x: 14; y: 14; width: parent.width - 28; spacing: 5
                         Repeater {
-                            model: Math.min(count, 8)
+                            model: Math.min(tile.wins, 8)
                             Rectangle { width: 28; height: 20; radius: 4; color: Qt.rgba(1, 1, 1, 0.18); border.color: Qt.rgba(1, 1, 1, 0.25) }
                         }
                     }
@@ -111,7 +112,7 @@ Window {
                     }
                     Text {
                         x: 14; y: parent.height - 24
-                        text: current ? (count === 1 ? "1 ventana · actual" : count + " ventanas · actual") : count === 0 ? "vacío" : count === 1 ? "1 ventana" : count + " ventanas"
+                        text: current ? (wins === 1 ? "1 ventana · actual" : wins + " ventanas · actual") : wins === 0 ? "vacío" : wins === 1 ? "1 ventana" : wins + " ventanas"
                         color: Qt.rgba(1, 1, 1, 0.65); font.family: Theme.font; font.pixelSize: 11
                     }
                     MouseArea {

@@ -65,7 +65,22 @@ QtObject {
             if (Session.prefs.welcomed !== true) welcomeLater.start()
         }
     }
-    property Timer welcomeLater: Timer { interval: 1800; onTriggered: if (root.welcome && Session.prefs.welcomed !== true) root.welcome.open() }
+    property Timer welcomeLater: Timer { interval: 1800; onTriggered: root.welcomeNow() }
+    // under the lock screen nobody would see it, and the keyboard would stay with the lock: wait for the unlock
+    property bool welcomeWaiting: false
+    function welcomeNow() {
+        if (!root.welcome || Session.prefs.welcomed === true) return
+        if (Session.locked) { root.welcomeWaiting = true; return }
+        root.welcomeWaiting = false; root.welcome.open()
+    }
+    property Connections lockWatch: Connections {
+        target: Session
+        function onLockedChanged() {
+            if (Session.locked) return
+            if (root.welcomeWaiting) root.welcomeLater.restart()
+            else if (root.welcome && root.welcome.shown) root.welcome.refocus()
+        }
+    }
 
     // the wallpaper hides its clock while a full-screen panel or dialog is open
     property Binding overlay: Binding { target: Session; property: "overlay"; value: (!!root.ai && root.ai.shown) || (!!root.confirm && root.confirm.shown) || (!!root.overview && root.overview.shown) }

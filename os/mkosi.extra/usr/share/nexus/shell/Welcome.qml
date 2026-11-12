@@ -18,6 +18,8 @@ Window {
     property bool shown: false
     property int step: 0
     function open() { hideLater.stop(); step = 0; visible = true; shown = true; requestActivate(); keys.forceActiveFocus() }
+    // after the lock screen the compositor gives the keyboard back to a window, not to this layer: map it again
+    function refocus() { if (!shown) return; visible = false; visible = true; requestActivate(); keys.forceActiveFocus() }
     function close() { if (!shown) return; shown = false; hideLater.restart(); Session.setPref("welcomed", true) }
     function next() { if (step < steps.length - 1) step++; else close() }
     function back() { if (step > 0) step-- }

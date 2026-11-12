@@ -178,6 +178,9 @@ export type SessionOptions = {
   focusedFn?: () => Promise<string | null>;
   /** How often the menu bar's active window is checked (ms). */
   focusPollMs?: number;
+  /** test hook: is a lock screen (gtklock, swaylock) running for this person? */
+  lockRunning?: () => boolean;
+  lockPollMs?: number;
   /** Press a shortcut in the active window (wtype arguments from wtypeArgs). */
   keysFn?: (args: string[]) => void;
   /** minimize / maximize / fullscreen / close the active window. */
@@ -559,6 +562,36 @@ export function createSession(o: SessionOptions) {
   let focusTimer: ReturnType<typeof setInterval> | undefined;
   let weatherTimer: ReturnType<typeof setTimeout> | undefined;
   let wallTimer: ReturnType<typeof setInterval> | undefined;
+
+  // ---- the lock screen (gtklock or swaylock, started by /usr/bin/nexus-lock). The shell keeps its welcome tour for
+  //      after the unlock and hands the keyboard back to what was open. nexus-lock asks /lockinfo right before it locks;
+  //      from then on a look at /proc every second says when the lock has gone (10 s of grace for it to appear).
+  const lockRunning = o.lockRunning ?? (() => {
+    let ids: string[] = []; try { ids = fs.readdirSync("/proc"); } catch { return false; }
+    const uid = process.getuid?.() ?? -1;
+    for (const id of ids) {
+      if (!/^\d+$/.test(id)) continue;
+      try {
+        const c = fs.readFileSync(`/proc/${id}/comm`, "utf8").trim();
+        if ((c === "gtklock" || c === "swaylock") && fs.statSync(`/proc/${id}`).uid === uid) return true;
+      } catch { /* the process ended meanwhile */ }
+    }
+    return false;
+  });
+  let locked = false;
+  let lockTimer: ReturnType<typeof setInterval> | undefined;
+  const watchLock = (seenAlready: boolean) => {
+    if (!locked) { locked = true; push("lock", { locked: true }); }
+    if (lockTimer) return;
+    let seen = seenAlready; const since = Date.now();
+    lockTimer = setInterval(() => {
+      if (lockRunning()) { seen = true; return; }
+      if (!seen && Date.now() - since < 10_000) return;
+      clearInterval(lockTimer); lockTimer = undefined;
+      locked = false; push("lock", { locked: false });
+    }, o.lockPollMs ?? 1000);
+    lockTimer.unref();
+  };
 
   // ---- NEXUS Update: the root service nexus-updated (core/src/updated.ts) over its unix socket. Its status events
   //      become "update" events for Ajustes → Actualizaciones, and the moments that matter become desktop notices.
@@ -1418,13 +1451,18 @@ export function createSession(o: SessionOptions) {
         return send(404, { error: "not found" });
       }
       if (m === "GET" && p === "/weather") return send(200, weather ?? { off: String(readPrefs().city ?? "madrid") === "off", loading: true });
+      if (m === "GET" && p === "/lock") return send(200, { locked });
       if (m === "GET" && p === "/lockinfo") {
         // read by /usr/bin/nexus-lock (a shell script, hence key=value text instead of JSON)
         const open = visibleTasks().filter((t) => !t.done).length;
         // the lock screen shows the desktop's wallpaper (paths are checked in wallpaper.ts: no quotes, no new lines)
         const wall = wallpapers.resolve();
         const wl = wall.kind === "image" ? `wallpaper=${wall.file}\nwallpaper_ink=${wall.ink}\n` : wall.kind === "color" ? `wallpaper_color=${wall.color}\nwallpaper_ink=${wall.ink}\n` : "";
-        const text = `clock24=${readPrefs().clock24 === false ? 0 : 1}\ngreeting=${lockGreeting(open, weather, new Date().getHours())}\n${wl}`;
+        // the account's picture instead of the initial (a path in ~/.config: no quotes, backslashes or new lines)
+        const photo = me().photo;
+        const ph = photo && !/["\\\n]/.test(photo) ? `photo=${photo}\n` : "";
+        const text = `clock24=${readPrefs().clock24 === false ? 0 : 1}\ngreeting=${lockGreeting(open, weather, new Date().getHours())}\n${wl}${ph}`;
+        watchLock(false);
         res.writeHead(200, { "content-type": "text/plain; charset=utf-8" }); return res.end(text);
       }
       if (m === "GET" && p === "/ai/settings") { const r = await engine("GET", "/api/ai/settings"); return send(r.status, r.json); }
@@ -1445,6 +1483,7 @@ export function createSession(o: SessionOptions) {
       mailTimer = setInterval(() => { if (mail.hasVip()) mail.poll().catch(() => {}); }, 5 * 60_000); mailTimer.unref();
       windowTimer = setInterval(() => { checkWindows().catch(() => {}); }, o.windowPollMs ?? 3000); windowTimer.unref();
       focusTimer = setInterval(() => { checkFocus().catch(() => {}); }, o.focusPollMs ?? 600); focusTimer.unref();
+      if (lockRunning()) watchLock(true);
       // weather now, then every 30 min (a failed refresh retries in 2 min)
       const weatherLoop = () => refreshWeather().then(() => o.weatherEveryMs ?? 1_800_000, () => 120_000).then((ms) => { if (!stopped) { weatherTimer = setTimeout(weatherLoop, ms); weatherTimer.unref(); } });
       weatherLoop();
@@ -1456,7 +1495,7 @@ export function createSession(o: SessionOptions) {
       listenPort = (server.address() as any).port;
       r(listenPort);
     })),
-    stop: () => new Promise<void>((r) => { stopped = true; automations.stop(); agents.stop(); agencies.stop(); clearInterval(windowTimer); clearInterval(focusTimer); clearTimeout(weatherTimer); clearInterval(wallTimer); clearInterval(mailTimer); updates.stop(); try { pageIndex.flush(); } catch { /* read-only home */ } life.abort(); for (const w of waiters) w(); server.closeAllConnections(); server.close(() => r()); }),
+    stop: () => new Promise<void>((r) => { stopped = true; automations.stop(); agents.stop(); agencies.stop(); clearInterval(windowTimer); clearInterval(focusTimer); clearInterval(lockTimer); clearTimeout(weatherTimer); clearInterval(wallTimer); clearInterval(mailTimer); updates.stop(); try { pageIndex.flush(); } catch { /* read-only home */ } life.abort(); for (const w of waiters) w(); server.closeAllConnections(); server.close(() => r()); }),
   };
 }
 
