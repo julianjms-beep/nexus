@@ -3,9 +3,11 @@ import QtQuick.Window
 import QtQuick.Controls
 import "../shell"
 
-// NEXUS Store: the services you use on the web, as apps of their own (core/src/store.ts). "Instalar" adds the app
-// to this computer (one line of settings: nothing is downloaded); "Abrir" starts it in its own window with its own
-// session. "Añadir una web" turns any https:// address into an app.
+// NEXUS Store, in two parts (the switch at the top of the side bar):
+//  - «Apps web»: the services you use on the web, as apps of their own (core/src/store.ts). "Instalar" adds the app
+//    to this computer (one line of settings: nothing is downloaded); "Abrir" starts it in its own window with its own
+//    session. "Añadir una web" turns any https:// address into an app.
+//  - «Apps de Linux»: programs from Flathub's catalogue, installed for this person (apps/LinuxAppsView.qml).
 Window {
     id: w
     visible: true
@@ -15,6 +17,7 @@ Window {
     color: Theme.bg
 
     property var store: null
+    property string mode: "web"           // "web" | "linux"
     property string cat: "Todas"
     property string filter: ""
     property bool adding: false
@@ -69,8 +72,28 @@ Window {
                 AppIcon { app: "store"; width: 30; height: 30 }
                 Text { text: "Store"; color: Theme.text; font.family: Theme.font; font.pixelSize: 20; font.weight: Font.DemiBold; anchors.verticalCenter: parent.verticalCenter }
             }
+            // web apps or Linux apps
+            Rectangle {
+                width: parent.width; height: 38; radius: 12; color: Theme.card2
+                Row {
+                    anchors.fill: parent; anchors.margins: 3
+                    Repeater {
+                        model: [["web", "Apps web"], ["linux", "Apps de Linux"]]
+                        Rectangle {
+                            required property var modelData
+                            readonly property bool on: w.mode === modelData[0]
+                            width: parent.width / 2; height: parent.height; radius: 9
+                            color: on ? Theme.accent : "transparent"
+                            Behavior on color { ColorAnimation { duration: Theme.ms(140) } }
+                            Text { anchors.centerIn: parent; text: modelData[1]; color: on ? "#ffffff" : Theme.dim; font.family: Theme.font; font.pixelSize: 12; font.weight: on ? Font.DemiBold : Font.Normal }
+                            MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: w.mode = modelData[0] }
+                        }
+                    }
+                }
+            }
+            Item { width: 1; height: 8 }
             Repeater {
-                model: w.cats
+                model: w.mode === "web" ? w.cats : []
                 Rectangle {
                     required property string modelData
                     readonly property bool on: w.cat === modelData
@@ -86,13 +109,22 @@ Window {
         }
         Text {
             x: 18; width: parent.width - 36; anchors.bottom: parent.bottom; anchors.bottomMargin: 16; wrapMode: Text.Wrap; lineHeight: 1.2
-            text: "Cada app abre en su ventana, con su propia sesión, aparte del Navegador y de las demás."
+            text: w.mode === "web" ? "Cada app abre en su ventana, con su propia sesión, aparte del Navegador y de las demás."
+                                   : "Programas del catálogo Flathub. Se instalan solo para ti, sin contraseña de administrador, y cada uno va aislado: antes de instalar ves qué puede tocar."
             color: Theme.faint; font.family: Theme.font; font.pixelSize: 12
         }
     }
 
-    // ---------------- the apps
+    // ---------------- Linux apps (apps/LinuxAppsView.qml)
+    LinuxAppsView {
+        visible: w.mode === "linux"
+        anchors.left: side.right; anchors.right: parent.right; anchors.top: parent.top; anchors.bottom: parent.bottom
+        anchors.margins: 24
+    }
+
+    // ---------------- the web apps
     Item {
+        visible: w.mode === "web"
         anchors.left: side.right; anchors.right: parent.right; anchors.top: parent.top; anchors.bottom: parent.bottom
         anchors.margins: 24
         Row {
