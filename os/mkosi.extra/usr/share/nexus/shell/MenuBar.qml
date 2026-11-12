@@ -193,7 +193,7 @@ Window {
                 width: 20; height: 20
                 LineIcon { anchors.centerIn: parent; name: Session.prefs.dnd === true ? "bell-off" : "bell"; size: 17; stroke: 1.7; color: mb.ink }
                 Rectangle {
-                    visible: Session.unread > 0 && Session.prefs.dnd !== true
+                    visible: Session.unread > 0
                     x: 11; y: -2
                     width: Math.max(14, badge.implicitWidth + 7); height: 14; radius: 7
                     color: Theme.danger

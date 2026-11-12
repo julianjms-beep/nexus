@@ -54,9 +54,9 @@ Window {
     Rectangle {
         id: card
         width: Math.min(400, nc.width - 20)
-        readonly property real top: Session.layout === "barra" ? 34 : 60
-        y: top
-        height: nc.height - top - (Session.layout === "barra" ? 50 + 10 : 10)
+        readonly property real topY: Session.layout === "barra" ? 34 : 60
+        y: topY
+        height: nc.height - topY - (Session.layout === "barra" ? 50 + 10 : 10)
         x: nc.width - width - 10 + dx
         property real dx: nc.shown ? 0 : width + 20
         radius: 16
@@ -71,10 +71,10 @@ Window {
         // ---- header: Avisos · n sin leer · No molestar · Borrar todo
         Item {
             id: head
-            x: 18; y: 16; width: parent.width - 36; height: 54
+            x: 18; y: 16; width: parent.width - 36; height: 58
             Text { y: 0; text: "Avisos"; color: Theme.text; font.family: Theme.font; font.pixelSize: 20; font.weight: Font.Bold }
             Text {
-                y: 28
+                y: 38; width: parent.width; elide: Text.ElideRight
                 text: Session.prefs.dnd === true ? "No molestar: los avisos llegan aquí sin sonar" : Session.unread > 0 ? Session.unread + (Session.unread === 1 ? " sin leer" : " sin leer") : Session.notices.length ? "Todo leído" : "Nada pendiente"
                 color: Theme.dim; font.family: Theme.font; font.pixelSize: 12
             }
@@ -165,7 +165,7 @@ Window {
                         x: 56; y: who.y + who.height + 3; width: parent.width - 56 - 16
                         text: row.isHeader ? "" : modelData.text
                         wrapMode: Text.Wrap; maximumLineCount: 4; elide: Text.ElideRight
-                        color: Theme.dim; font.family: Theme.font; font.pixelSize: 12.5; lineHeight: 1.18
+                        color: Theme.dim; font.family: Theme.font; font.pixelSize: 13; lineHeight: 1.18
                     }
                     Rectangle {
                         visible: !row.isHeader && !modelData.read
