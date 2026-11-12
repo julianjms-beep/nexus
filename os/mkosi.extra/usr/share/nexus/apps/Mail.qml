@@ -86,7 +86,7 @@ Window {
         replyTo = reply || null; sendMsg = ""; composing = true
         toField.text = reply ? reply.from.email : ""
         subjField.text = reply ? (/^re:/i.test(reply.subject) ? reply.subject : "Re: " + reply.subject) : ""
-        bodyArea.text = reply ? "\n\n" + "El " + Qt.formatDateTime(new Date(reply.date), "d MMM yyyy, HH:mm") + ", " + reply.from.name + " escribió:\n" + String(reply.text || "").split("\n").map(function(l) { return "> " + l }).join("\n").slice(0, 6000) : ""
+        bodyArea.text = reply ? "\n\n" + "El " + new Date(reply.date).toLocaleString(Qt.locale("es_ES"), "d MMM yyyy, HH:mm") + ", " + reply.from.name + " escribió:\n" + String(reply.text || "").split("\n").map(function(l) { return "> " + l }).join("\n").slice(0, 6000) : ""
         if (reply) { bodyArea.forceActiveFocus(); bodyArea.cursorPosition = 0 } else toField.forceActiveFocus()
     }
     function send() {
@@ -96,7 +96,7 @@ Window {
         if (replyTo) { b.inReplyTo = replyTo.id; b.references = ((replyTo.references || "") + " " + replyTo.id).trim() }
         Session.request("POST", "/mail/send", b, function(st, j) {
             w.sending = false
-            if (st === 200) { w.composing = false; Session.toast("Correo enviado", "good"); if (w.folder === "sent") w.refresh() }
+            if (st === 200) { w.composing = false; Session.toast("Correo enviado", "good"); w.refresh() }
             else w.sendMsg = j && j.error ? j.error : "No se ha podido enviar."
         })
     }
@@ -120,10 +120,13 @@ Window {
             else w.setupMsg = j && j.error ? j.error : "No se ha podido añadir la cuenta."
         })
     }
+    // "Jueves 12 de noviembre, 19:13": the person's language, not the C locale the app runs in (it printed "Thursday 12 de November")
+    function longDate(iso) { var s = new Date(iso).toLocaleString(Qt.locale("es_ES"), "dddd d 'de' MMMM, HH:mm"); return s.charAt(0).toUpperCase() + s.slice(1) }
     function when(iso) {
         if (!iso) return ""
         var d = new Date(iso), t = new Date()
-        return d.toDateString() === t.toDateString() ? Qt.formatTime(d, "HH:mm") : d.getFullYear() === t.getFullYear() ? Qt.formatDate(d, "d MMM") : Qt.formatDate(d, "d MMM yy")
+        var es = Qt.locale("es_ES")
+        return d.toDateString() === t.toDateString() ? d.toLocaleTimeString(es, "HH:mm") : d.getFullYear() === t.getFullYear() ? d.toLocaleDateString(es, "d MMM") : d.toLocaleDateString(es, "d MMM yy")
     }
     Component.onCompleted: loadInfo("")
 
@@ -281,7 +284,7 @@ Window {
                         Text { anchors.centerIn: parent; text: w.open ? (w.open.from.name || "?").charAt(0).toUpperCase() : ""; color: Theme.text; font.family: Theme.font; font.pixelSize: 16; font.weight: Font.DemiBold } }
                     Column { anchors.verticalCenter: parent.verticalCenter
                         Text { text: w.open ? w.open.from.name + "  ·  " + w.open.from.email : ""; color: Theme.text; font.family: Theme.font; font.pixelSize: 13; font.weight: Font.DemiBold }
-                        Text { text: w.open ? Qt.formatDateTime(new Date(w.open.date), "dddd d 'de' MMMM, HH:mm") : ""; color: Theme.dim; font.family: Theme.font; font.pixelSize: 12 } }
+                        Text { text: w.open ? w.longDate(w.open.date) : ""; color: Theme.dim; font.family: Theme.font; font.pixelSize: 12 } }
                 }
                 Row {
                     spacing: 8

@@ -92,8 +92,8 @@ Window {
         if (!iso) return ""
         var d = new Date(iso), t = new Date()
         var y = new Date(t.getFullYear(), t.getMonth(), t.getDate() - 1)
-        var day = d.toDateString() === t.toDateString() ? "hoy" : d.toDateString() === y.toDateString() ? "ayer" : Qt.formatDate(d, "d 'de' MMMM")
-        return day + " a las " + Qt.formatTime(d, "HH:mm")
+        var day = d.toDateString() === t.toDateString() ? "hoy" : d.toDateString() === y.toDateString() ? "ayer" : d.toLocaleDateString(Qt.locale("es_ES"), "d 'de' MMMM")
+        return day + " a las " + d.toLocaleTimeString(Qt.locale("es_ES"), "HH:mm")
     }
     function fmtSize(b) { return !b ? "" : b >= 1e6 ? (b / 1e6).toFixed(1).replace(".", ",") + " MB" : Math.max(1, Math.round(b / 1e3)) + " KB" }
     property string keyMsg: ""
