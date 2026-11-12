@@ -31,6 +31,19 @@ if [ -n "$missing" ]; then
   [ -n "$rest" ] && { timeout 180 apt-get install -y -q --no-install-recommends $rest >/dev/null 2>&1 || log "could not install:$rest (Ajustes → Actualizaciones → Debian will offer them again)"; }
 fi
 
+# ---- the Engine's service user belongs to nexus-shell (was a sysusers "m" line; see usr/lib/sysusers.d/nexus.conf)
+id -nG nexus-engine 2>/dev/null | tr ' ' '\n' | grep -qx nexus-shell || usermod -aG nexus-shell nexus-engine 2>/dev/null || log "could not add nexus-engine to nexus-shell"
+# a first boot from a slow disk can leave systemd-sysusers "failed" (killed by its timeout while the disk was busy
+# growing the system): run it again now that it has nothing to write, so Ajustes and systemctl stop showing a failure
+if systemctl is-failed --quiet systemd-sysusers.service; then
+  systemctl restart systemd-sysusers.service && log "systemd-sysusers: cleared the failure of an earlier boot" || log "systemd-sysusers still fails"
+fi
+
+# ---- pnpm and yarn through corepack (shims next to node; the first use downloads the manager)
+if [ -e /usr/lib/nexus/node/lib/node_modules/corepack/dist/pnpm.js ]; then
+  for b in pnpm pnpx yarn yarnpkg; do [ -e "/usr/local/bin/$b" ] || ln -sf "/usr/lib/nexus/node/lib/node_modules/corepack/dist/$b.js" "/usr/local/bin/$b"; done
+fi
+
 # ---- groups of the people of this computer (Wi-Fi, Bluetooth and the power mode from the menu bar)
 for g in netdev bluetooth; do
   getent group "$g" >/dev/null || groupadd -r "$g"

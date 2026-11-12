@@ -6,7 +6,9 @@ NEXUS OS se abre como una app más, dentro de una ventana. macOS sigue igual: no
 ABRIRLO
   1. Conecta el disco duro.
   2. Doble clic en «NEXUS OS.app» (esta carpeta).
-  3. Espera a que arranque (desde un disco externo tarda un poco más la primera vez).
+  3. Espera a que arranque. La PRIMERA vez NEXUS agranda su sistema hasta 32 GB: en el disco del Mac tarda
+     unos segundos; desde un disco externo formateado en ExFAT (el formato que traen casi todos) puede tardar
+     5 minutos con la pantalla parada. Es normal y solo pasa esa vez. Si puedes, pásalo al Mac (abajo).
   Puedes agrandar la ventana o ponerla a pantalla completa con el botón verde.
 
 CONTRASEÑA

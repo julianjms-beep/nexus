@@ -4,8 +4,11 @@ set -eu
 # locales
 sed -i 's/^# *\(es_ES.UTF-8 UTF-8\)/\1/; s/^# *\(en_US.UTF-8 UTF-8\)/\1/' /etc/locale.gen
 locale-gen >/dev/null
-# system identities (nexus-shell group, nexus-engine service user)
+# system identities (nexus-shell group, nexus-engine service user; the membership here, see usr/lib/sysusers.d/nexus.conf)
 systemd-sysusers
+usermod -aG nexus-shell nexus-engine
+# pnpm and yarn through corepack (the shims point at corepack's own scripts; the first use downloads the manager)
+for b in pnpm pnpx yarn yarnpkg; do ln -sf "/usr/lib/nexus/node/lib/node_modules/corepack/dist/$b.js" "/usr/local/bin/$b"; done
 # NEXUS prompt for every new user's bash ( ◆ ~/carpeta ❯ ), appended once to the template
 if ! grep -q "NEXUS prompt" /etc/skel/.bashrc; then
   cat >> /etc/skel/.bashrc <<'EOF'

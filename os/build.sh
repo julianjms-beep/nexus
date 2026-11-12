@@ -74,6 +74,8 @@ tar -xJf "$NODE_TARBALL" -C "$STAGE/usr/lib/nexus/node" --strip-components=1 --e
 # node, npm and npx for everyone; `npm i -g` goes to ~/.local (never into the runtime the NEXUS services use)
 mkdir -p "$STAGE/usr/local/bin" "$STAGE/usr/lib/nexus/node/etc"
 for b in node npm npx corepack; do ln -sf "/usr/lib/nexus/node/bin/$b" "$STAGE/usr/local/bin/$b"; done
+# pnpm and yarn: corepack's shims (the first use downloads the manager; `corepack enable` would do the same links)
+for b in pnpm pnpx yarn yarnpkg; do ln -sf "/usr/lib/nexus/node/lib/node_modules/corepack/dist/$b.js" "$STAGE/usr/local/bin/$b"; done
 printf 'prefix=${HOME}/.local\nfund=false\nupdate-notifier=false\n' > "$STAGE/usr/lib/nexus/node/etc/npmrc"
 is_target_elf "$STAGE/usr/lib/nexus/node/bin/node"
 # npm runs on the image's own node from here on, so packages with native parts get the image's architecture

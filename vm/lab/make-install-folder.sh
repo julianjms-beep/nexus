@@ -24,6 +24,10 @@ sed "s/<string>0\.[0-9]*\.[0-9]*<\/string>/<string>$version<\/string>/g" "$M/Inf
 plutil -lint "$A/Contents/Info.plist" >/dev/null
 install -m 0755 "$M/launcher.sh" "$A/Contents/MacOS/NEXUS OS"
 mkdir -p "$OUT/Sistema"
+# exFAT (the factory format of most external disks) is slow at the sparse writes of a first boot: the root partition
+# grows to DISK_GB and the disk stalled for ~5 minutes on 2026-11-10 (systemd-sysusers timed out). Say so.
+fs=$(diskutil info "$(df "$OUT" | awk 'NR==2{print $1}')" 2>/dev/null | sed -n 's/.*File System Personality: *//p')
+case "$fs" in *ExFAT*|*FAT*) echo "aviso: «$OUT» está en un disco $fs; el primer arranque puede tardar 5 minutos (mejor APFS o el disco del Mac)" >&2 ;; esac
 rm -rf "$OUT/NEXUS OS.app"
 ditto --noextattr --noqtn "$A" "$OUT/NEXUS OS.app"
 sed "s/^NEXUS OS 0\.[0-9]*\.[0-9]*/NEXUS OS $version/" "$M/LÉEME.txt" > "$OUT/LÉEME.txt"
