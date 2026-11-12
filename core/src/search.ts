@@ -217,6 +217,7 @@ export const SETTINGS_PAGES: { page: string; title: string; words: string }[] = 
   { page: "ai", title: "NEXUS AI", words: "ia inteligencia artificial nexus ai claude clave api key asistente" },
   { page: "actualizaciones", title: "Actualizaciones", words: "actualizaciones actualizar update version sistema paquetes debian apt volver anterior" },
   { page: "buscador", title: "Buscador", words: "buscador busqueda buscar search web resultados brave tavily clave resumen historial paginas recordar" },
+  { page: "terminal", title: "Terminal", words: "terminal consola shell letra fuente tamano tema colores cursor pestanas paneles sugerencias historial zsh saludo" },
   { page: "seguridad", title: "Privacidad y seguridad", words: "privacidad seguridad cortafuegos firewall contraseña clave password bloqueo bloquear pantalla ssh acceso remoto sudo administrador historial proteccion escudo" },
   { page: "acerca", title: "Acerca de este equipo", words: "acerca equipo informacion version memoria disco procesador cpu sistema nexus os" },
 ];

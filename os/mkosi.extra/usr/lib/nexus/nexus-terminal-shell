@@ -1,0 +1,10 @@
+#!/bin/sh
+# The shell of each tab and pane of NEXUS Terminal: zsh with NEXUS's settings (suggestions from the history while
+# typing, colours for the command being written, the same prompt as bash) when zsh is installed, and the person's
+# own shell otherwise. The person's ~/.zshrc is still read, after NEXUS's (usr/share/nexus/terminal/zsh/.zshrc).
+# Whoever prefers bash creates the empty file ~/.config/nexus/terminal-bash.
+z=/usr/share/nexus/terminal/zsh
+if [ -x /usr/bin/zsh ] && [ -r "$z/.zshrc" ] && [ ! -e "$HOME/.config/nexus/terminal-bash" ]; then
+  ZDOTDIR=$z SHELL=/usr/bin/zsh exec /usr/bin/zsh -i
+fi
+exec "${SHELL:-/bin/bash}" -i

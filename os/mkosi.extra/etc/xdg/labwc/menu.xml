@@ -17,7 +17,7 @@
   <!-- the desktop itself normally answers right clicks (the wallpaper's own menu); this only shows if it is not
        there, e.g. while the desktop shell restarts -->
   <menu id="root-menu">
-    <item label="Terminal"><action name="Execute" command="foot" /></item>
+    <item label="Terminal"><action name="Execute" command="nexus-terminal" /></item>
     <item label="Ajustes"><action name="Execute" command="nexusctl open settings" /></item>
   </menu>
 </openbox_menu>

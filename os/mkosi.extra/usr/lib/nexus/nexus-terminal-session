@@ -1,0 +1,8 @@
+#!/bin/sh
+# What runs inside a NEXUS Terminal window (usr/bin/nexus-terminal sets it as foot's shell): a tmux of this window
+# only, which gives it tabs and split panes. Without tmux, the plain shell: the terminal must always open.
+conf=/usr/share/nexus/terminal/tmux.conf
+if command -v tmux >/dev/null 2>&1 && [ -r "$conf" ]; then
+  exec tmux -L "nexus-$$" -f "$conf" new-session
+fi
+exec /usr/lib/nexus/nexus-terminal-shell

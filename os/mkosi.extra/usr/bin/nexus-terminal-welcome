@@ -1,0 +1,51 @@
+#!/bin/sh
+# The greeting of NEXUS Terminal: what is installed and the shortcuts worth knowing. Shown once per window (in its
+# first tab), and not at all when Ajustes → Terminal → «Saludo al abrir» is off. `nexus-terminal-welcome --show`
+# prints it again on request.
+#
+# The versions are asked to each program once a day (a dozen `--version` calls take a moment on a slow disk) and kept
+# in ~/.cache/nexus/terminal-tools: the system's version on the first line, then one "name version" per line.
+if [ "${1:-}" != --show ]; then
+  [ "${NEXUS_TERM_WELCOME:-true}" = false ] && exit 0
+  [ -n "${TMUX:-}" ] || exit 0
+  [ "$(tmux show -sv @nexus_welcomed 2>/dev/null)" = 1 ] && exit 0
+  tmux set -s @nexus_welcomed 1 2>/dev/null
+fi
+
+cache="$HOME/.cache/nexus/terminal-tools"
+ver=$(sed -n 's/^VERSION_ID="\{0,1\}\([^"]*\)"\{0,1\}$/\1/p' /usr/lib/os-release 2>/dev/null | head -n 1)
+fresh=
+[ -s "$cache" ] && [ -n "$(find "$cache" -mmin -1440 2>/dev/null)" ] && [ "$(sed -n 1p "$cache")" = "v$ver" ] && fresh=1
+if [ -z "$fresh" ]; then
+  v() {
+    name=$1; shift
+    command -v "$1" >/dev/null 2>&1 || return 0
+    n=$("$@" 2>&1 | head -n 1 | sed -n 's/[^0-9]*\([0-9][0-9]*\.[0-9][0-9]*\(\.[0-9][0-9]*\)\{0,1\}\).*/\1/p')
+    [ -n "$n" ] && printf '%s %s\n' "$name" "$n"
+    return 0
+  }
+  mkdir -p "$HOME/.cache/nexus"
+  {
+    echo "v$ver"
+    v node node --version; v python python3 --version; v git git --version; v npm npm --version
+    v gcc gcc -dumpfullversion; v gh gh --version; v cmake cmake --version
+  } >"$cache.tmp" 2>/dev/null && mv "$cache.tmp" "$cache"
+fi
+
+A=$(printf '\033[38;2;124;108;255m'); D=$(printf '\033[38;5;245m'); B=$(printf '\033[1m'); O=$(printf '\033[0m')
+case "${NEXUS_T_ACCENT:-}" in
+  \#??????)
+    h=${NEXUS_T_ACCENT#\#}
+    A=$(printf '\033[38;2;%d;%d;%dm' "0x$(echo "$h" | cut -c1-2)" "0x$(echo "$h" | cut -c3-4)" "0x$(echo "$h" | cut -c5-6)") ;;
+esac
+tools=$(sed 1d "$cache" 2>/dev/null | awk -v d="$D" -v o="$O" '{ printf "%s%s %s%s%s", (NR > 1 ? "   " : ""), $1, d, $2, o }')
+echo
+printf '  %s◆%s %sNEXUS Terminal%s  %s%s%s\n' "$A" "$O" "$B" "$O" "$D" "$ver" "$O"
+[ -n "$tools" ] && printf '  %s\n' "$tools"
+echo
+printf '  %sai%s ¿cómo deshago el último commit?    %spregunta a NEXUS AI%s\n' "$A" "$O" "$D" "$O"
+printf '  %snexus-agente%s                          %sun agente de IA aislado en su carpeta%s\n' "$A" "$O" "$D" "$O"
+echo
+printf '  %sCtrl+Mayús+T%s pestaña    %sCtrl+Mayús+D%s dividir    %sCtrl+Mayús+E%s dividir abajo    %sCtrl+Mayús+flechas%s cambiar de panel\n' "$D" "$O" "$D" "$O" "$D" "$O" "$D" "$O"
+printf '  %sCtrl+R%s historial    %s→%s acepta la sugerencia    %sAjustes → Terminal%s letra y colores\n' "$D" "$O" "$D" "$O" "$D" "$O"
+echo

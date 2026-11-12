@@ -16,7 +16,7 @@ Window {
 
     property string section: "apariencia"
     // id, name, icon and the colour of its tile in the sidebar
-    readonly property var sections: [["apariencia", "Apariencia", "palette", "#7c6cff"], ["fondo", "Fondo", "image", "#2f9bff"], ["ai", "NEXUS AI", "sparkle", "#b45cff"], ["buscador", "Buscador", "search", "#0ea5c4"],
+    readonly property var sections: [["apariencia", "Apariencia", "palette", "#7c6cff"], ["fondo", "Fondo", "image", "#2f9bff"], ["ai", "NEXUS AI", "sparkle", "#b45cff"], ["buscador", "Buscador", "search", "#0ea5c4"], ["terminal", "Terminal", "terminal", "#1f2333"],
                                      ["seguridad", "Privacidad y seguridad", "shield", "#22b573"], ["actualizaciones", "Actualizaciones", "update", "#ff8f2e"], ["acerca", "Acerca de", "info", "#7d859f"]]
     // how many things Privacidad y seguridad would improve (the red badge in the sidebar)
     property int secTodo: 0
@@ -197,6 +197,9 @@ Window {
 
         // ---------------- Buscador (apps/SearchPage.qml)
         SearchPage { visible: w.section === "buscador"; anchors.fill: parent }
+
+        // ---------------- Terminal (apps/TerminalPage.qml)
+        TerminalPage { visible: w.section === "terminal"; anchors.fill: parent }
 
         // ---------------- Privacidad y seguridad (apps/SecurityPage.qml)
         SecurityPage {

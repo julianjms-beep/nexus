@@ -69,7 +69,7 @@ test("AI 'abre la terminal' -> Engine event -> relay -> fixed argv; unknown apps
     const r = await s.call("POST", "/ai", { text: "abre la terminal" });
     assert.equal(r.json.actions[0].app, "terminal");
     await until(() => s.spawned.length === 1);
-    assert.deepEqual(s.spawned[0], ["foot"]);
+    assert.deepEqual(s.spawned[0], ["nexus-terminal"]);
     assert.equal((await s.call("POST", "/launch", { app: "rm" })).status, 400);
     assert.equal((await s.call("POST", "/launch", { app: "constructor" })).status, 400);
     await s.call("POST", "/launch", { app: "monitor" });
@@ -235,7 +235,7 @@ test("an app that is already open is brought to the front (even minimized) inste
     // a window we did not start (key binding, or a previous sessiond) is found too
     s.win.open = true;
     assert.equal((await s.call("POST", "/launch", { app: "terminal" })).json.focused, true);
-    assert.equal(s.spawned.filter((a) => a[0] === "foot").length, 0);
+    assert.equal(s.spawned.filter((a) => a[0] === "nexus-terminal").length, 0);
   } finally { await s.stop(); }
 });
 
@@ -785,5 +785,39 @@ test("NEXUS Mail: accounts are checked by signing in once, passwords never come 
     assert.deepEqual([calls.at(-1)!.op, calls.at(-1)!.req.to, calls.at(-1)!.req.sent, calls.at(-1)!.req.inReplyTo], ["send", "jefa@empresa.es", "Sent Messages", "<m12@x>"]);
     assert.equal((await t.call("GET", `/mail/followups?account=${acc.id}&days=7`)).json.items[0].subject, "Factura");
     assert.equal((await t.call("POST", "/mail/accounts/remove", { id: acc.id })).json.accounts.length, 0);
+  } finally { await t.stop(); }
+});
+
+test("NEXUS Terminal: Ajustes → Terminal keeps only known choices, and the launcher turns them into the window's settings", async () => {
+  const t = await setup();
+  try {
+    assert.equal((await t.call("POST", "/prefs", { termTheme: "rosa" })).status, 400);
+    assert.equal((await t.call("POST", "/prefs", { termFont: "Comic Sans; rm -rf ~" })).status, 400);
+    assert.equal((await t.call("POST", "/prefs", { termSize: 40 })).status, 400);
+    assert.equal((await t.call("POST", "/prefs", { termCursor: "heart" })).status, 400);
+    const r = await t.call("POST", "/prefs", { termTheme: "oceano", termFont: "DejaVu Sans Mono", termSize: 14, termCursor: "block", termSuggest: false, accent: "#ff8f2e" });
+    assert.equal(r.status, 200);
+    assert.equal((await t.call("POST", "/launch", { app: "settings", page: "terminal" })).status, 200);
+    // the launcher (a shell script) reads the file nexus-sessiond wrote, exactly as it is on disk
+    const launcher = path.resolve(import.meta.dirname, "../../os/mkosi.extra/usr/bin/nexus-terminal");
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), "nexus-term-"));
+    fs.mkdirSync(path.join(home, "nexus"), { recursive: true });
+    fs.writeFileSync(path.join(home, "nexus", "prefs.json"), JSON.stringify(r.json, null, 2));
+    const { execFileSync } = await import("node:child_process");
+    const run = () => execFileSync("sh", [launcher, "--print"], { env: { PATH: process.env.PATH ?? "", HOME: home, XDG_CONFIG_HOME: home, XDG_RUNTIME_DIR: home }, encoding: "utf8" }).trim();
+    const ini = fs.readFileSync(run(), "utf8");
+    assert.match(ini, /^font=DejaVu Sans Mono:size=14$/m);
+    assert.match(ini, /^style=block$/m);
+    assert.match(ini, /^background=0a1722$/m);
+    assert.match(ini, /^color=0a1722 ff8f2e$/m);
+    assert.match(ini, /^shell=\/usr\/lib\/nexus\/nexus-terminal-session$/m);
+    assert.match(ini, /^\\x1b\[5001~=Control\+Shift\+t$/m);
+    // a prefs file someone edited by hand cannot put anything else into the window's settings
+    fs.writeFileSync(path.join(home, "nexus", "prefs.json"), '{\n  "termFont": "x\\nshell=/bin/evil",\n  "termSize": "99",\n  "termTheme": "auto",\n  "theme": "light"\n}');
+    const safe = fs.readFileSync(run(), "utf8");
+    assert.match(safe, /^font=JetBrains Mono:size=11$/m);
+    assert.match(safe, /^background=f7f8fc$/m);   // "auto" follows the light desktop
+    assert.equal(safe.match(/^shell=/gm)!.length, 1);
+    fs.rmSync(home, { recursive: true, force: true });
   } finally { await t.stop(); }
 });

@@ -31,12 +31,12 @@ import { PageIndex, settingsMatches, tokenize, fold, wikiQueryUrl, parseWiki, su
 // `window`: wlrctl match spec (exact app_id / title) of the app's window, used to bring an already open (or minimized)
 // window to the front instead of starting a second copy.
 const QML = "app_id:org.qt-project.qml";
-export const SETTINGS_PAGES = ["apariencia", "fondo", "ai", "buscador", "seguridad", "actualizaciones", "acerca"];
+export const SETTINGS_PAGES = ["apariencia", "fondo", "ai", "buscador", "terminal", "seguridad", "actualizaciones", "acerca"];
 // `needs`: a program that is not part of NEXUS itself (VS Code, from Microsoft's package): the app only exists while
 // that file does (GET /apps leaves it out, launching it says so), e.g. on a NEXUS updated from before it came in the image.
 export type CatalogApp = { name: string; icon: string; argv: string[]; single: boolean; window: string[]; needs?: string };
 export const CATALOG: Record<string, CatalogApp> = {
-  terminal: { name: "Terminal", icon: "terminal", argv: ["foot"], single: false, window: ["app_id:foot"] },
+  terminal: { name: "Terminal", icon: "terminal", argv: ["nexus-terminal"], single: false, window: ["app_id:foot"] },
   files: { name: "Archivos", icon: "files", argv: ["nexus-app", "Files"], single: false, window: [QML, "title:Archivos"] },
   editor: { name: "Notas", icon: "editor", argv: ["nexus-app", "Notes"], single: false, window: [QML, "title:Notas"] },
   // /usr/local/bin/code = Microsoft's `code` as a native Wayland window (see that file)
@@ -112,6 +112,8 @@ export const WM_LIGHT_THEME = [
 ].join("\n");
 export const CC_MODULES = ["concentracion", "oscuro", "animaciones", "pantalla", "sonido", "musica", "energia"];
 export const LOCK_AFTER = [0, 1, 2, 5, 10, 15, 30, 60];
+export const TERM_FONTS = ["JetBrains Mono", "JetBrains Mono NL", "DejaVu Sans Mono"];
+export const TERM_THEMES = ["auto", "oscuro", "claro", "oceano", "grafito"];
 const PREF_KEYS: Record<string, (v: unknown) => boolean> = {
   theme: (v) => v === "dark" || v === "light",
   city: (v) => v === "off" || (typeof v === "string" && Object.hasOwn(CITIES, v)),
@@ -124,6 +126,13 @@ const PREF_KEYS: Record<string, (v: unknown) => boolean> = {
   searchWeb: (v) => v === "auto" || v === "manual" || v === "off",   // NEXUS Search: Claude's web results on every search, on request, or never
   searchMemory: (v) => typeof v === "boolean",   // NEXUS Search remembers the pages visited (only on this computer)
   lockAfter: (v) => typeof v === "number" && LOCK_AFTER.includes(v),   // minutes left alone before the screen locks (0 = never; nexus-idle)
+  // Ajustes → Terminal (usr/bin/nexus-terminal reads them when a window opens)
+  termFont: (v) => typeof v === "string" && TERM_FONTS.includes(v),
+  termSize: (v) => typeof v === "number" && Number.isInteger(v) && v >= 9 && v <= 20,
+  termTheme: (v) => typeof v === "string" && TERM_THEMES.includes(v),
+  termCursor: (v) => v === "beam" || v === "block" || v === "underline",
+  termWelcome: (v) => typeof v === "boolean",   // the greeting with what is installed and the shortcuts
+  termSuggest: (v) => typeof v === "boolean",   // suggestions from the history while typing
   // Control Center → «Editar controles»: the tiles the person hid (Wi-Fi/Bluetooth/airplane always stay)
   ccHidden: (v) => Array.isArray(v) && v.length <= CC_MODULES.length && new Set(v).size === v.length && v.every((x) => typeof x === "string" && CC_MODULES.includes(x)),
 };

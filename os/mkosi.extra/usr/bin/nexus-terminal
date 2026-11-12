@@ -1,0 +1,93 @@
+#!/bin/sh
+# NEXUS Terminal: one window with tabs and split panes, in the colours and the font chosen in Ajustes → Terminal.
+#
+# The window is foot (the terminal engine), the tabs and panes are tmux (one private tmux per window, so closing the
+# window ends everything in it), and the shell is zsh with history suggestions when it is installed, bash otherwise
+# (usr/lib/nexus/nexus-terminal-shell). This script only turns the person's preferences into the file foot reads and
+# the colours tmux reads, in the session's private runtime folder, and starts the window.
+#
+#   nexus-terminal            a new window
+#   nexus-terminal --print    write the configuration and print its path instead of opening the window (tests)
+#
+# nexus-sessiond writes prefs.json itself (one "key": value per line, values checked), so plain matches are enough.
+prefs="${XDG_CONFIG_HOME:-$HOME/.config}/nexus/prefs.json"
+pref() { [ -r "$prefs" ] && sed -n "s/^ *\"$1\": *\"\{0,1\}\([^\",]*\)\"\{0,1\},\{0,1\} *\$/\1/p" "$prefs" | head -n 1; }
+
+font=$(pref termFont); size=$(pref termSize); theme=$(pref termTheme); cursor=$(pref termCursor)
+welcome=$(pref termWelcome); suggest=$(pref termSuggest); accent=$(pref accent); system=$(pref theme)
+case "$font" in "JetBrains Mono" | "JetBrains Mono NL" | "DejaVu Sans Mono") ;; *) font="JetBrains Mono" ;; esac
+case "$size" in 9 | 1[0-9] | 20) ;; *) size=11 ;; esac
+case "$cursor" in beam | block | underline) ;; *) cursor=beam ;; esac
+case "$accent" in \#[0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F]) accent=${accent#\#} ;; *) accent=7c6cff ;; esac
+case "$theme" in oscuro | claro | oceano | grafito) ;; *) [ "$system" = light ] && theme=claro || theme=oscuro ;; esac
+
+# Each theme: background, text, the tab bar, dim text, lines, selection, then the 16 colours programs use.
+case "$theme" in
+  claro)
+    bg=f7f8fc fg=1c2030 bar=e6e9f2 dim=6b7390 line=cfd4e3 sel=d6d0ff selfg=1c2030
+    c="1c2030 d6336c 1a8f5c b7791f 3b5bdb 7048e8 0c8599 868e96 495057 e64980 2f9e44 e67700 4c6ef5 845ef7 1098ad 343a40" ;;
+  oceano)
+    bg=0a1722 fg=d6e6f2 bar=06101a dim=6f8ba0 line=173042 sel=1d4a66 selfg=ffffff
+    c="12222f ff6b81 4fd6a0 ffc66d 4ea8ff 9d8cff 3fd0e0 b9cbd9 3f5668 ff8fa0 7fe6bd ffd899 7fc1ff b9adff 7ae6f0 ffffff" ;;
+  grafito)
+    bg=1c1c1e fg=e5e5ea bar=141416 dim=8e8e93 line=2c2c2e sel=3a3a3c selfg=ffffff
+    c="2c2c2e ff453a 32d74b ffd60a 0a84ff bf5af2 64d2ff c7c7cc 636366 ff6961 5fe37a ffe04d 409cff d27ff5 8fdfff ffffff" ;;
+  *)
+    bg=0b0d14 fg=dfe2f0 bar=06070c dim=7d859f line=2b3047 sel=3a2f7a selfg=ffffff
+    c="1a1d2b ff5c7a 3ddc97 ffb84d 6c8cff a78bfa 3fd0e0 c8ccdc 4a4f66 ff7a93 6ee7b7 ffd27a 8fa8ff c4b5fd 7ae6f0 ffffff" ;;
+esac
+
+dir="${XDG_RUNTIME_DIR:-/tmp}/nexus/terminal"
+mkdir -p "$dir" && chmod 700 "$dir" 2>/dev/null
+ini="$dir/foot-$$.ini"
+{
+  echo "# Written by nexus-terminal from Ajustes → Terminal. Do not edit: it is rewritten for every window."
+  echo "[main]"
+  echo "font=$font:size=$size"
+  echo "pad=14x10"
+  echo "title=Terminal"
+  echo "locked-title=yes"
+  echo "initial-window-size-chars=110x32"
+  echo "shell=/usr/lib/nexus/nexus-terminal-session"
+  echo "[cursor]"
+  echo "style=$cursor"
+  echo "blink=yes"
+  echo "color=$bg $accent"
+  echo "[mouse]"
+  echo "hide-when-typing=yes"
+  echo "[colors]"
+  echo "alpha=1.0"
+  echo "background=$bg"
+  echo "foreground=$fg"
+  echo "selection-foreground=$selfg"
+  echo "selection-background=$sel"
+  i=0
+  for v in $c; do
+    if [ "$i" -lt 8 ]; then echo "regular$i=$v"; else echo "bright$((i - 8))=$v"; fi
+    i=$((i + 1))
+  done
+  # The keys of the tabs and panes: foot sends tmux a private code for each (usr/share/nexus/terminal/tmux.conf).
+  echo "[key-bindings]"
+  echo "spawn-terminal=none"
+  echo "search-start=none"
+  echo "prompt-prev=none"
+  echo "prompt-next=none"
+  echo "[text-bindings]"
+  n=1
+  for k in Control+Shift+t Control+Shift+w Control+Shift+d Control+Shift+e Control+Tab Control+Shift+ISO_Left_Tab \
+    Control+Shift+n Control+Shift+z Control+Shift+f Control+Shift+Left Control+Shift+Right Control+Shift+Up Control+Shift+Down \
+    Mod1+1 Mod1+2 Mod1+3 Mod1+4 Mod1+5 Mod1+6 Mod1+7 Mod1+8 Mod1+9 Control+Shift+r; do
+    printf '\\x1b[%d~=%s\n' $((5000 + n)) "$k"
+    n=$((n + 1))
+  done
+} >"$ini"
+
+# what the tab bar and the shell read
+export NEXUS_T_BG="#$bg" NEXUS_T_FG="#$fg" NEXUS_T_BAR="#$bar" NEXUS_T_DIM="#$dim" NEXUS_T_LINE="#$line" NEXUS_T_ACCENT="#$accent"
+export NEXUS_TERM_WELCOME="${welcome:-true}" NEXUS_TERM_SUGGEST="${suggest:-true}"
+if [ "${1:-}" = --print ]; then echo "$ini"; exit 0; fi
+# (the file is only read when the window starts; it goes away with it)
+foot -c "$ini" "$@"
+st=$?
+rm -f "$ini"
+exit $st

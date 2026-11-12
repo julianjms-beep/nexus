@@ -5,7 +5,7 @@
 //   win: "minimize"  a window action on the active window (POST /window: minimize, maximize, fullscreen, close)
 //   act: {...}       NEXUS itself: launch an app, open Ajustes at a page, NEXUS AI, power, next wallpaper
 //   hint: "super+q"  only shown (the keys that do the same), when the item does it another way
-// The shortcuts are the apps' real ones: foot's defaults, VS Code's Linux defaults, and NEXUS's apps (apps/*.qml Shortcut{}).
+// The shortcuts are the apps' real ones: NEXUS Terminal's (usr/bin/nexus-terminal), VS Code's Linux defaults, and NEXUS's apps (apps/*.qml Shortcut{}).
 
 var SEP = { sep: true };
 
@@ -85,16 +85,21 @@ function forApp(app, name) {
     ];
     if (app === "terminal") return [
         { title: "Shell", items: [
-            { label: "Nueva ventana", keys: "ctrl+shift+n" }, SEP,
-            { label: "Cerrar ventana", win: "close", hint: "super+q" }
+            { label: "Pestaña nueva", keys: "ctrl+shift+t" }, { label: "Ventana nueva", keys: "ctrl+shift+n" }, SEP,
+            { label: "Dividir a la derecha", keys: "ctrl+shift+d" }, { label: "Dividir abajo", keys: "ctrl+shift+e" }, SEP,
+            { label: "Cerrar panel o pestaña", keys: "ctrl+shift+w" }, { label: "Cerrar ventana", win: "close", hint: "super+q" }
         ] },
         { title: "Editar", items: [
             { label: "Copiar", keys: "ctrl+shift+c" }, { label: "Pegar", keys: "ctrl+shift+v" }, SEP,
-            { label: "Buscar en el historial", keys: "ctrl+shift+r" }
+            { label: "Buscar en pantalla", keys: "ctrl+shift+f" }, { label: "Buscar en el historial", keys: "ctrl+r" }
         ] },
         { title: "Ver", items: [
+            { label: "Pestaña siguiente", keys: "ctrl+Tab" }, { label: "Pestaña anterior", keys: "ctrl+shift+Tab" },
+            { label: "Nombre de la pestaña…", keys: "ctrl+shift+r" }, SEP,
+            { label: "Ampliar el panel", keys: "ctrl+shift+z" }, SEP,
             { label: "Aumentar texto", keys: "ctrl+plus" }, { label: "Reducir texto", keys: "ctrl+minus" },
-            { label: "Tamaño normal", keys: "ctrl+0" }, SEP, { label: "Pantalla completa", win: "fullscreen" }
+            { label: "Tamaño normal", keys: "ctrl+0" }, SEP, { label: "Pantalla completa", win: "fullscreen" }, SEP,
+            { label: "Ajustes de Terminal…", act: { settings: "terminal" } }
         ] },
         windowMenu(), help(name)
     ];
