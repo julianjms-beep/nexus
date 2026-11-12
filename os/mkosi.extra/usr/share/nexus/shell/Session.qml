@@ -57,7 +57,8 @@ QtObject {
     readonly property bool clock24: prefs.clock24 !== false
     // the desktop: "barra" (one bar at the bottom, the panther: the default since 09-11) or "clasico" (top bar + dock)
     readonly property string layout: prefs.layout === "clasico" ? "clasico" : "barra"
-    property var me: ({ user: "", name: "" })   // who is using this desktop (the start menu shows it)
+    property var me: ({ user: "", name: "", photo: "" })   // who is using this desktop (the start menu shows it); photo = file path or ""
+    property int meStamp: 0
     // the active window, for the menu bar (nexus-sessiond asks the compositor): {app (catalog id or ""), appId, title, name}
     property var focused: ({ app: "", appId: "", title: "", name: "" })
 
@@ -157,6 +158,7 @@ QtObject {
         else if (e.kind === "notice") notice(d)
         else if (e.kind === "notices") refreshNotices()
         else if (e.kind === "desktops") desktops = d
+        else if (e.kind === "me") { me = d; meStamp = Date.now() }
         else if (e.kind === "automations") automationsChanged()
         else if (e.kind === "connect") connectChanged()
         else if (e.kind === "agents") agentsChanged()
@@ -193,7 +195,7 @@ QtObject {
     // the menu bar's items: a shortcut pressed in the active window ("ctrl+c"), or a window action ("minimize"…)
     function sendKeys(keys) { request("POST", "/keys", { keys: keys }, null) }
     function windowAction(action) { request("POST", "/window", { action: action }, null) }
-    function refreshMe() { request("GET", "/me", null, function(st, j) { if (st === 200 && j) s.me = j }) }
+    function refreshMe() { request("GET", "/me", null, function(st, j) { if (st === 200 && j) { s.me = j; s.meStamp = Date.now() } }) }
     function refreshApps() { request("GET", "/apps", null, function(st, j) { if (st === 200 && j) s.apps = j }) }
     function refreshPrefs() { request("GET", "/prefs", null, function(st, j) { if (st === 200 && j) { s.prefs = j; s.applyPrefs() } }) }
     function refreshSystem() { request("GET", "/system", null, function(st, j) { if (st === 200 && j) { s.system = j; s.engineUp = true } else if (st === 503) s.engineUp = false }) }

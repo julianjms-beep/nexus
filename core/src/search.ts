@@ -214,6 +214,13 @@ export class PageIndex {
 export const SETTINGS_PAGES: { page: string; title: string; words: string }[] = [
   { page: "apariencia", title: "Apariencia", words: "apariencia tema oscuro claro modo color acento tamano interfaz escala letra reloj 24 horas animaciones escritorio barra clasico dock" },
   { page: "fondo", title: "Fondo de escritorio", words: "fondo pantalla wallpaper imagen foto pantera presentacion cambiar fondo escritorio" },
+  { page: "wifi", title: "Wi-Fi", words: "wifi wi-fi red redes internet conexion inalambrica contrasena conectar olvidar cable ethernet" },
+  { page: "bluetooth", title: "Bluetooth", words: "bluetooth auriculares altavoz raton teclado emparejar dispositivos inalambrico" },
+  { page: "bateria", title: "Batería", words: "bateria energia carga cargando ahorro consumo rendimiento modo bajo consumo suspender" },
+  { page: "sonido", title: "Sonido", words: "sonido volumen audio altavoces auriculares silencio salida microfono" },
+  { page: "pantalla", title: "Pantalla", words: "pantalla brillo resolucion tamano monitor hz escala interfaz" },
+  { page: "teclado", title: "Teclado e idioma", words: "teclado idioma distribucion layout espanol ingles teclas region" },
+  { page: "cuenta", title: "Cuenta", words: "cuenta usuario foto avatar imagen perfil nombre persona" },
   { page: "ai", title: "NEXUS AI", words: "ia inteligencia artificial nexus ai claude clave api key asistente" },
   { page: "actualizaciones", title: "Actualizaciones", words: "actualizaciones actualizar update version sistema paquetes debian apt volver anterior" },
   { page: "buscador", title: "Buscador", words: "buscador busqueda buscar search web resultados brave tavily clave resumen historial paginas recordar" },

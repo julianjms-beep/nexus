@@ -164,6 +164,43 @@ export function readBattery(sysRoot = "/sys/class/power_supply"): BatteryInfo | 
 // ---------------------------------------------------------------- checks
 
 const CTRL = /[\u0000-\u001f\u007f]/;
+/** `wpctl status`: the audio outputs (Sinks) with their ids, the default one starred. */
+export function parseWpStatus(out: string): { id: number; name: string; isDefault: boolean }[] {
+  const lines = out.split("\n"); const res: { id: number; name: string; isDefault: boolean }[] = [];
+  let inSinks = false;
+  for (const l of lines) {
+    if (/├─ Sinks:|└─ Sinks:/.test(l)) { inSinks = true; continue; }
+    if (inSinks && /├─ |└─ /.test(l)) break;
+    if (!inSinks) continue;
+    const m = /(\*)?\s*(\d+)\.\s+(.+?)\s*(\[vol:.*)?$/.exec(l.replace(/^[\s│]*/, ""));
+    if (m) res.push({ id: Number(m[2]), name: m[3].trim(), isDefault: !!m[1] });
+  }
+  return res;
+}
+export type DisplayMode = { width: number; height: number; hz: number; current: boolean; preferred: boolean };
+export type DisplayOutput = { name: string; description: string; enabled: boolean; scale: number; modes: DisplayMode[] };
+/** `wlr-randr --json`: each screen, its modes (the usual sizes first, newest Hz first), the one in use. */
+export function parseRandr(j: unknown): DisplayOutput[] {
+  if (!Array.isArray(j)) return [];
+  return j.map((o: any) => {
+    const seen = new Set<string>();
+    const modes: DisplayMode[] = (Array.isArray(o?.modes) ? o.modes : []).map((m: any) => ({ width: Number(m.width) || 0, height: Number(m.height) || 0, hz: Math.round((Number(m.refresh) || 0) * 1000) / 1000, current: !!m.current, preferred: !!m.preferred }))
+      .filter((m: DisplayMode) => m.width > 0 && m.height > 0)
+      .sort((a: DisplayMode, b: DisplayMode) => b.width * b.height - a.width * a.height || b.hz - a.hz)
+      // one entry per size: the one in use, else the preferred one, else the highest refresh (the list is sorted by it)
+      .sort((a: DisplayMode, b: DisplayMode) => b.width * b.height - a.width * a.height || Number(b.current) - Number(a.current) || Number(b.preferred) - Number(a.preferred) || b.hz - a.hz)
+      .filter((m: DisplayMode) => { const k = `${m.width}x${m.height}`; if (seen.has(k)) return false; seen.add(k); return true; });
+    // wlr-randr writes "(null) (null) (Virtual-1)" when the screen has no maker or model: keep what is left
+    const label = [o?.make, o?.model].filter((x: unknown) => typeof x === "string" && x && x !== "Unknown").join(" ");
+    const description = String(o?.description || label || "").replace(/\(null\)\s*/g, "").trim().replace(/^\((.*)\)$/, "$1").slice(0, 80);
+    return { name: String(o?.name ?? ""), description, enabled: o?.enabled !== false, scale: Number(o?.scale) || 1, modes };
+  }).filter((o) => o.name);
+}
+export function checkMode(v: unknown): { width: number; height: number; hz: number } {
+  const m = /^(\d{3,5})x(\d{3,5})(?:@(\d+(?:\.\d+)?))?$/.exec(String(v ?? "").trim());
+  if (!m) throw new DeviceError("ese tamaño de pantalla no es válido", 400);
+  return { width: Number(m[1]), height: Number(m[2]), hz: m[3] ? Number(m[3]) : 0 };
+}
 export function checkSsid(v: unknown): string {
   const s = String(v ?? "");
   if (!s || Buffer.byteLength(s) > 32 || CTRL.test(s)) throw new DeviceError("ese nombre de red no es válido");
@@ -415,6 +452,61 @@ export function createDevices(o: DevicesOptions = {}) {
       if (!ks.length) throw new DeviceError("esa red no estaba guardada", 404);
       for (const k of ks) await nm(["connection", "delete", "id", k.name]);
       return { ok: true, forgotten: ks.length };
+    },
+
+    /** Looks around for a few seconds and lists every device bluez knows: paired ones and the new ones found. */
+    async scanBluetooth(seconds = 6) {
+      if (!hasBluetooth()) throw new DeviceError("este equipo no tiene Bluetooth", 409);
+      const secs = Math.max(2, Math.min(15, Number(seconds) || 6));
+      const r = await run("bluetoothctl", ["--timeout", String(secs), "scan", "on"], { timeoutMs: secs * 1000 + 4000 });
+      if (r.missing) throw new DeviceError("este equipo no tiene Bluetooth (falta bluez)", 409);
+      if (/No default controller/i.test(r.out + r.err)) throw new DeviceError("el Bluetooth está apagado", 409);
+      const all = parseBtDevices((await run("bluetoothctl", ["devices"], { timeoutMs: 3000 })).out);
+      const paired = new Set(parseBtDevices((await run("bluetoothctl", ["devices", "Paired"], { timeoutMs: 3000 })).out).map((d) => d.mac));
+      const conn = new Set(parseBtDevices((await run("bluetoothctl", ["devices", "Connected"], { timeoutMs: 3000 })).out).map((d) => d.mac));
+      return { devices: all.slice(0, 40).map((d) => ({ ...d, paired: paired.has(d.mac), connected: conn.has(d.mac) })) };
+    },
+    /** Pairs, trusts (so it reconnects by itself) and connects a device found by the scan. */
+    async pairBluetooth(macIn: unknown) {
+      const mac = checkMac(macIn);
+      const r = await run("bluetoothctl", ["--timeout", "25", "pair", mac], { timeoutMs: 30_000 });
+      if (r.code !== 0 && !/Pairing successful|already exists|AlreadyExists/i.test(r.out + r.err)) throw new DeviceError(/AuthenticationFailed|canceled/i.test(r.out + r.err) ? "el dispositivo no ha aceptado el emparejamiento" : "no se ha podido emparejar (¿está en modo visible y cerca?)", 502);
+      await run("bluetoothctl", ["trust", mac], { timeoutMs: 5000 });
+      await run("bluetoothctl", ["connect", mac], { timeoutMs: 20_000 });
+      return { ok: true, mac };
+    },
+    async forgetBluetooth(macIn: unknown) {
+      const mac = checkMac(macIn);
+      const r = await run("bluetoothctl", ["remove", mac], { timeoutMs: 6000 });
+      if (r.code !== 0 && !/not available/i.test(r.out + r.err)) throw new DeviceError("no se ha podido olvidar el dispositivo", 502);
+      return { ok: true };
+    },
+    /** The audio outputs (speakers, headphones, HDMI…) and which one is in use. */
+    async soundOutputs() {
+      const r = await run("wpctl", ["status"], { timeoutMs: 4000 });
+      if (r.missing || r.code !== 0) return { available: false, outputs: [] as { id: number; name: string; isDefault: boolean }[] };
+      return { available: true, outputs: parseWpStatus(r.out) };
+    },
+    async setSoundOutput(idIn: unknown) {
+      const id = Number(idIn); if (!Number.isInteger(id) || id < 0 || id > 100000) throw new DeviceError("salida no válida", 400);
+      const r = await run("wpctl", ["set-default", String(id)], { timeoutMs: 4000 });
+      if (r.code !== 0) throw new DeviceError("no se ha podido cambiar la salida de sonido", 502);
+      return { ok: true, id };
+    },
+    /** The screens and their sizes (wlr-randr). */
+    async display() {
+      const r = await run("wlr-randr", ["--json"], { timeoutMs: 4000 });
+      if (r.missing || r.code !== 0) return { available: false, outputs: [] as DisplayOutput[] };
+      let j: unknown = null; try { j = JSON.parse(r.out); } catch { j = null; }
+      return { available: true, outputs: parseRandr(j) };
+    },
+    async setDisplayMode(outputIn: unknown, modeIn: unknown) {
+      const output = String(outputIn ?? "").trim(); if (!/^[A-Za-z0-9_.-]{1,32}$/.test(output)) throw new DeviceError("pantalla no válida", 400);
+      const m = checkMode(modeIn);
+      const spec = m.hz ? `${m.width}x${m.height}@${m.hz}Hz` : `${m.width}x${m.height}`;
+      const r = await run("wlr-randr", ["--output", output, "--mode", spec], { timeoutMs: 6000 });
+      if (r.code !== 0) throw new DeviceError("la pantalla no acepta ese tamaño", 502);
+      return { ok: true, output, mode: spec };
     },
 
     async setBluetooth(on: boolean) {

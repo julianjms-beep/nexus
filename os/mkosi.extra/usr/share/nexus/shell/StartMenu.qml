@@ -185,9 +185,11 @@ Window {
                         }
                         Text {
                             anchors.centerIn: parent
+                            visible: !Session.me.photo
                             text: (Session.me.name || "?").charAt(0).toUpperCase()
                             color: "#ffffff"; font.family: Theme.font; font.pixelSize: 15; font.weight: Font.Bold
                         }
+                        Avatar { anchors.fill: parent; photo: Session.me.photo; stamp: Session.meStamp }
                     }
                     Text {
                         anchors.verticalCenter: parent.verticalCenter

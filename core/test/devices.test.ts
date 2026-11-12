@@ -5,7 +5,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import {
+import { parseWpStatus, parseRandr, checkMode,
   nmFields, parseWifiList, parseNmDevices, parseKnown, parseVolume, parseBtShow, parseBtDevices, parsePowerProfiles,
   parseBrightness, parseRfkill, parseMedia, readBattery, checkSsid, checkWifiPassword, wifiError, createDevices, DeviceError, bluetoothAdapterPresent,
   type Runner, type RunResult,
@@ -286,4 +286,42 @@ test("first-boot setup joins Wi-Fi the same way (it used `passwd-file`, which `n
     assert.ok(!calls.some((c) => c.includes("passwd-file")));
     assert.ok(calls.includes("nmcli connection modify id Casa connection.autoconnect yes"));
   } finally { s.close(); fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test("wpctl status: the audio outputs with the default one starred", () => {
+  const out = `PipeWire 'pipewire-0' [1.4.2, nexus@nexus, cookie:1]
+ └─ Clients:
+        32. WirePlumber                         [1.4.2, nexus@nexus, pid:800]
+
+Audio
+ ├─ Devices:
+ │      47. Built-in Audio                      [alsa]
+ │
+ ├─ Sinks:
+ │  *   51. Built-in Audio Analog Stereo        [vol: 0.60]
+ │      63. HDMI / DisplayPort 1                [vol: 1.00 MUTED]
+ │
+ ├─ Sources:
+ │  *   52. Built-in Audio Analog Stereo        [vol: 1.00]
+ │
+`;
+  assert.deepEqual(parseWpStatus(out), [{ id: 51, name: "Built-in Audio Analog Stereo", isDefault: true }, { id: 63, name: "HDMI / DisplayPort 1", isDefault: false }]);
+  assert.deepEqual(parseWpStatus("nothing"), []);
+});
+
+test("wlr-randr --json: screens with their modes, biggest first, no duplicates; modes are checked", () => {
+  const j = [{ name: "Virtual-1", description: "Red Hat, Inc. QEMU Monitor", enabled: true, scale: 1.5, modes: [
+    { width: 1024, height: 768, refresh: 60, current: false, preferred: false }, { width: 1920, height: 1200, refresh: 60, current: true, preferred: true },
+    { width: 1920, height: 1080, refresh: 60, current: false, preferred: false }, { width: 1920, height: 1080, refresh: 60.000, current: false, preferred: false }] }];
+  const o = parseRandr(j);
+  assert.equal(o.length, 1); assert.equal(o[0].scale, 1.5);
+  assert.deepEqual(o[0].modes.map((m) => `${m.width}x${m.height}@${m.hz}${m.current ? "*" : ""}`), ["1920x1200@60*", "1920x1080@60", "1024x768@60"]);
+  assert.equal(parseRandr([{ name: "Virtual-1", description: "(null) (null) (Virtual-1)", modes: [] }])[0].description, "Virtual-1");
+  const two = parseRandr([{ name: "eDP-1", make: null, model: null, modes: [{ width: 1920, height: 1200, refresh: 59.955, current: true }, { width: 1920, height: 1200, refresh: 59.885 }, { width: 1920, height: 1200, refresh: 60, preferred: true }] }]);
+  assert.equal(two[0].description, "");
+  assert.deepEqual(two[0].modes.map((m) => m.hz), [59.955]);
+  assert.deepEqual(checkMode("1920x1080@60"), { width: 1920, height: 1080, hz: 60 });
+  assert.deepEqual(checkMode("2560x1440"), { width: 2560, height: 1440, hz: 0 });
+  assert.throws(() => checkMode("1920 x 1080; rm -rf /"));
+  assert.deepEqual(parseRandr("nope"), []);
 });

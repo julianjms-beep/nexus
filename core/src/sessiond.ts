@@ -33,7 +33,7 @@ import { Notices, checkNotice } from "./notices.ts";
 // `window`: wlrctl match spec (exact app_id / title) of the app's window, used to bring an already open (or minimized)
 // window to the front instead of starting a second copy.
 const QML = "app_id:org.qt-project.qml";
-export const SETTINGS_PAGES = ["apariencia", "fondo", "ai", "buscador", "terminal", "seguridad", "actualizaciones", "acerca"];
+export const SETTINGS_PAGES = ["apariencia", "fondo", "wifi", "bluetooth", "bateria", "sonido", "pantalla", "teclado", "cuenta", "ai", "buscador", "terminal", "seguridad", "actualizaciones", "acerca"];
 // `needs`: a program that is not part of NEXUS itself (VS Code, from Microsoft's package): the app only exists while
 // that file does (GET /apps leaves it out, launching it says so), e.g. on a NEXUS updated from before it came in the image.
 export type CatalogApp = { name: string; icon: string; argv: string[]; single: boolean; window: string[]; needs?: string };
@@ -65,6 +65,11 @@ export function friendlyName(comm: string, cmdline: string): string {
   if (/^QtWebEngineProc/.test(comm)) return "Navegador (páginas)";
   return comm;
 }
+/** Keyboard layouts Ajustes → Teclado offers (XKB names; the list stays short on purpose). */
+export const KEYBOARD_LAYOUTS: { id: string; name: string }[] = [
+  { id: "es", name: "Español (España)" }, { id: "latam", name: "Español (Latinoamérica)" }, { id: "us", name: "Inglés (EE. UU.)" }, { id: "gb", name: "Inglés (Reino Unido)" },
+  { id: "fr", name: "Francés" }, { id: "de", name: "Alemán" }, { id: "it", name: "Italiano" }, { id: "pt", name: "Portugués (Portugal)" }, { id: "br", name: "Portugués (Brasil)" },
+];
 export const POWER: Record<string, string[]> = {
   lock: ["nexus-lock"], logout: ["labwc", "--exit"], reboot: ["systemctl", "reboot"], poweroff: ["systemctl", "poweroff"],
 };
@@ -890,6 +895,18 @@ export function createSession(o: SessionOptions) {
       web: String(prefs.searchWeb ?? "auto"), memory: prefs.searchMemory !== false, remembered: pageIndex.stats().pages };
   };
 
+  const me = () => {
+    let pw = ""; try { pw = fs.readFileSync("/etc/passwd", "utf8"); } catch { /* none */ }
+    const avatar = path.join(o.configDir, "avatar.png");
+    return { ...whoAmI(pw, os.userInfo().username), photo: fs.existsSync(avatar) ? avatar : "" };
+  };
+  const keyboardView = () => {
+    let layout = "";
+    for (const f of [path.join(o.configDir, "..", "labwc", "environment"), "/etc/xdg/labwc/environment", "/etc/default/keyboard"]) {
+      try { const m = /^(?:XKB_DEFAULT_LAYOUT|XKBLAYOUT)=\"?([a-z]{2,3})/m.exec(fs.readFileSync(f, "utf8")); if (m) { layout = m[1]; break; } } catch { /* next */ }
+    }
+    return { layout: layout || "es", layouts: KEYBOARD_LAYOUTS };
+  };
   // ---- HTTP API for the shell
   const authed = (req: http.IncomingMessage) => {
     const a = Buffer.from((req.headers.authorization ?? "").replace(/^Bearer /, "")), b = Buffer.from(token);
@@ -956,7 +973,7 @@ export function createSession(o: SessionOptions) {
       if (m === "POST" && p === "/ui") {
         // optional `text` (AI panel only): open the panel with that question already asked, e.g. `nexusctl ui ai "¿qué hora es?"`
         const b = await body(req); const panel = String(b.panel);
-        if (!["ai", "launcher", "power", "quick", "wifi", "battery", "notices", "center", "overview"].includes(panel)) return send(400, { error: "unknown panel" });
+        if (!["ai", "launcher", "power", "quick", "wifi", "battery", "notices", "center", "overview", "start"].includes(panel)) return send(400, { error: "unknown panel" });
         if (panel === "overview") await checkWindows().catch(() => {});
         const text = b.text === undefined ? "" : typeof b.text === "string" ? b.text.trim() : null;
         if (text === null || text.length > 500 || (text && panel !== "ai")) return send(400, { error: "invalid text" });
@@ -975,7 +992,36 @@ export function createSession(o: SessionOptions) {
       if (m === "POST" && p === "/notices/delete") { const b = await body(req); const ok = notices.remove(Number(b.id)); push("notices", { unread: notices.unread() }); return send(ok ? 200 : 404, ok ? { ok: true } : { error: "no such notice" }); }
       if (m === "POST" && p === "/notices/clear") { notices.clear(); push("notices", { unread: 0 }); return send(200, { ok: true }); }
       if (m === "GET" && p === "/prefs") return send(200, readPrefs());
-      if (m === "GET" && p === "/me") { let pw = ""; try { pw = fs.readFileSync("/etc/passwd", "utf8"); } catch { /* none */ } return send(200, whoAmI(pw, os.userInfo().username)); }
+      if (m === "GET" && p === "/me") return send(200, me());
+      // the account's picture: an image of the person's own (inside their home) copied to ~/.config/nexus/avatar.png
+      // and ~/.face (what Linux programs read); an empty path removes it
+      if (m === "POST" && p === "/me/photo") {
+        const b = await body(req); const src = String(b.path ?? "").trim();
+        const avatar = path.join(o.configDir, "avatar.png"), face = path.join(homeDir, ".face");
+        if (!src) { for (const f of [avatar, face]) fs.rmSync(f, { force: true }); push("me", me()); return send(200, me()); }
+        let real = ""; try { real = fs.realpathSync(src); } catch { return send(400, { error: "esa imagen no existe" }); }
+        if (!real.startsWith(fs.realpathSync(homeDir) + "/") || !/\.(png|jpe?g|webp)$/i.test(real)) return send(400, { error: "elige una imagen (png, jpg o webp) de tu carpeta personal" });
+        if (fs.statSync(real).size > 25e6) return send(400, { error: "la imagen es demasiado grande" });
+        fs.mkdirSync(o.configDir, { recursive: true, mode: 0o700 });
+        fs.copyFileSync(real, avatar + ".tmp"); fs.renameSync(avatar + ".tmp", avatar);
+        try { fs.copyFileSync(avatar, face); } catch { /* a read-only home */ }
+        push("me", me()); return send(200, me());
+      }
+      // the keyboard: the layout labwc uses (XKB_DEFAULT_LAYOUT in ~/.config/labwc/environment; applied on reconfigure
+      // for new windows, fully at the next login)
+      if (m === "GET" && p === "/keyboard") return send(200, keyboardView());
+      if (m === "POST" && p === "/keyboard") {
+        const b = await body(req); const layout = String(b.layout ?? "").trim();
+        if (!KEYBOARD_LAYOUTS.some((k) => k.id === layout)) return send(400, { error: "distribución desconocida" });
+        const envFile = path.join(o.configDir, "..", "labwc", "environment");
+        let lines: string[] = []; try { lines = fs.readFileSync(envFile, "utf8").split("\n"); } catch { /* new */ }
+        lines = lines.filter((l) => !/^XKB_DEFAULT_LAYOUT=/.test(l) && l.trim() !== "");
+        lines.push(`XKB_DEFAULT_LAYOUT=${layout}`);
+        fs.mkdirSync(path.dirname(envFile), { recursive: true, mode: 0o700 });
+        fs.writeFileSync(envFile, lines.join("\n") + "\n");
+        reconfigure();
+        push("keyboard", keyboardView()); return send(200, keyboardView());
+      }
       if (m === "GET" && p === "/wallpaper") return send(200, publishWallpaper());
       if (m === "GET" && p === "/wallpapers") return send(200, wallpapers.gallery());
       if (m === "POST" && p === "/wallpaper/next") { wallpapers.next(); return send(200, publishWallpaper()); }
@@ -1025,6 +1071,9 @@ export function createSession(o: SessionOptions) {
         try {
           if (m === "GET" && p === "/devices") return send(200, await devices.state());
           if (m === "GET" && p === "/devices/wifi") return send(200, await devices.wifiList(url.searchParams.get("rescan") === "1"));
+          if (m === "GET" && p === "/devices/bluetooth") return send(200, await devices.scanBluetooth(Number(url.searchParams.get("seconds") || 6)));
+          if (m === "GET" && p === "/devices/sound") return send(200, await devices.soundOutputs());
+          if (m === "GET" && p === "/devices/display") return send(200, await devices.display());
           if (m === "POST") {
             const b = await body(req);
             const on = b.on === true;
@@ -1034,6 +1083,10 @@ export function createSession(o: SessionOptions) {
             if (p === "/devices/wifi/forget") return send(200, await devices.forgetWifi(b.ssid));
             if (p === "/devices/bluetooth") return send(200, await devices.setBluetooth(on));
             if (p === "/devices/bluetooth/connect") return send(200, await devices.connectBluetooth(b.mac, on));
+            if (p === "/devices/bluetooth/pair") return send(200, await devices.pairBluetooth(b.mac));
+            if (p === "/devices/bluetooth/forget") return send(200, await devices.forgetBluetooth(b.mac));
+            if (p === "/devices/sound/output") return send(200, await devices.setSoundOutput(b.id));
+            if (p === "/devices/display/mode") return send(200, await devices.setDisplayMode(b.output, b.mode));
             if (p === "/devices/airplane") return send(200, await devices.setAirplane(on));
             if (p === "/devices/sound") return send(200, await devices.setSound({ volume: b.volume, muted: b.muted }));
             if (p === "/devices/brightness") return send(200, await devices.setBrightness(b.value));

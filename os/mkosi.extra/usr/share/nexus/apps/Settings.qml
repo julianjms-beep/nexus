@@ -16,7 +16,7 @@ Window {
 
     property string section: "apariencia"
     // id, name, icon and the colour of its tile in the sidebar
-    readonly property var sections: [["apariencia", "Apariencia", "palette", "#7c6cff"], ["fondo", "Fondo", "image", "#2f9bff"], ["ai", "NEXUS AI", "sparkle", "#b45cff"], ["buscador", "Buscador", "search", "#0ea5c4"], ["terminal", "Terminal", "terminal", "#1f2333"],
+    readonly property var sections: [["apariencia", "Apariencia", "palette", "#7c6cff"], ["fondo", "Fondo", "image", "#2f9bff"], ["ai", "NEXUS AI", "sparkle", "#b45cff"], ["wifi", "Wi-Fi", "globe", "#2f9bff"], ["bluetooth", "Bluetooth", "bluetooth", "#2f6bff"], ["bateria", "Batería", "plug", "#22b573"], ["sonido", "Sonido", "speaker", "#ff5c7a"], ["pantalla", "Pantalla", "sun", "#5b8def"], ["teclado", "Teclado e idioma", "list", "#8b8f9a"], ["buscador", "Buscador", "search", "#0ea5c4"], ["terminal", "Terminal", "terminal", "#1f2333"],
                                      ["seguridad", "Privacidad y seguridad", "shield", "#22b573"], ["actualizaciones", "Actualizaciones", "update", "#ff8f2e"], ["acerca", "Acerca de", "info", "#7d859f"]]
     // how many things Privacidad y seguridad would improve (the red badge in the sidebar)
     property int secTodo: 0
@@ -31,7 +31,7 @@ Window {
         var a = Qt.application.arguments
         for (var i = 0; i < a.length; i++) {
             var v = String(a[i])
-            if (v.indexOf("--page=") === 0) for (var k = 0; k < sections.length; k++) if (sections[k][0] === v.slice(7)) section = v.slice(7)
+            if (v.indexOf("--page=") === 0) { if (v.slice(7) === "cuenta") section = "cuenta"; for (var k = 0; k < sections.length; k++) if (sections[k][0] === v.slice(7)) section = v.slice(7) }
         }
         loadGallery()
         loadSecurity()
@@ -40,7 +40,7 @@ Window {
     }
     Connections {   // the desktop's "Cambiar el fondo…" while Ajustes is already open
         target: Session
-        function onUiRequested(panel, text) { if (panel === "settings") for (var k = 0; k < w.sections.length; k++) if (w.sections[k][0] === text) w.section = text }
+        function onUiRequested(panel, text) { if (panel === "settings") { if (text === "cuenta") w.section = "cuenta"; for (var k = 0; k < w.sections.length; k++) if (w.sections[k][0] === text) w.section = text } }
         function onWallpaperChanged() { w.loadGallery() }
         function onSecurityChanged() { w.loadSecurity() }
         // a mode picked here (Imagen, Tu foto) waits for its first choice; once nexus-sessiond has it, the prefs say
@@ -143,14 +143,15 @@ Window {
                 Rectangle {
                     x: 10; anchors.verticalCenter: parent.verticalCenter; width: 38; height: 38; radius: 19
                     gradient: Gradient { GradientStop { position: 0; color: Theme.accent } GradientStop { position: 1; color: Theme.accent2 } }
-                    Text { anchors.centerIn: parent; text: (Session.me.name || "?").charAt(0).toUpperCase(); color: "#ffffff"; font.family: Theme.font; font.pixelSize: 17; font.weight: Font.DemiBold }
+                    Text { anchors.centerIn: parent; visible: !Session.me.photo; text: (Session.me.name || "?").charAt(0).toUpperCase(); color: "#ffffff"; font.family: Theme.font; font.pixelSize: 17; font.weight: Font.DemiBold }
+                    Avatar { anchors.fill: parent; photo: Session.me.photo; stamp: Session.meStamp }
                 }
                 Column {
                     x: 58; width: parent.width - 66; anchors.verticalCenter: parent.verticalCenter
                     Text { width: parent.width; elide: Text.ElideRight; text: Session.me.name || "Tu cuenta"; color: Theme.text; font.family: Theme.font; font.pixelSize: 14; font.weight: Font.DemiBold }
                     Text { width: parent.width; elide: Text.ElideRight; text: "Cuenta y contraseña"; color: Theme.dim; font.family: Theme.font; font.pixelSize: 12 }
                 }
-                MouseArea { id: meArea; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: w.section = "seguridad" }
+                MouseArea { id: meArea; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: w.section = "cuenta" }
             }
             Item { width: 1; height: 6 }
             Repeater {
@@ -194,6 +195,15 @@ Window {
             NumberAnimation { target: pages; property: "opacity"; from: 0; to: 1; duration: Theme.ms(180); easing.type: Easing.OutCubic }
             NumberAnimation { target: pagesShift; property: "y"; from: 10; to: 0; duration: Theme.ms(240); easing.type: Easing.OutCubic }
         }
+
+        // ---------------- the computer's parts and the person (apps/*Page.qml)
+        WifiPage { visible: w.section === "wifi"; anchors.fill: parent }
+        BluetoothPage { visible: w.section === "bluetooth"; anchors.fill: parent }
+        BatteryPage { visible: w.section === "bateria"; anchors.fill: parent }
+        SoundPage { visible: w.section === "sonido"; anchors.fill: parent }
+        DisplayPage { visible: w.section === "pantalla"; anchors.fill: parent }
+        KeyboardPage { visible: w.section === "teclado"; anchors.fill: parent }
+        AccountPage { visible: w.section === "cuenta"; anchors.fill: parent; onOpenPage: function(section) { w.section = section } }
 
         // ---------------- Buscador (apps/SearchPage.qml)
         SearchPage { visible: w.section === "buscador"; anchors.fill: parent }

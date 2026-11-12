@@ -944,3 +944,28 @@ test("virtual desktops: switching presses labwc's hidden keys, windows are noted
     assert.equal((await s.call("GET", "/desktops")).json.windows.length, 1);
   } finally { await s.stop(); }
 });
+
+test("the account's photo comes from the person's own files and the keyboard layout is written for labwc", async () => {
+  const s = await setup();
+  try {
+    assert.equal((await s.call("GET", "/me")).json.photo, "");
+    fs.writeFileSync(path.join(s.home, "Documentos", "yo.png"), Buffer.from([0x89, 0x50, 0x4e, 0x47]));
+    fs.writeFileSync(path.join(s.dir, "fuera.png"), "x");
+    assert.equal((await s.call("POST", "/me/photo", { path: path.join(s.dir, "fuera.png") })).status, 400);
+    assert.equal((await s.call("POST", "/me/photo", { path: path.join(s.home, "Documentos", "nada.png") })).status, 400);
+    const r = await s.call("POST", "/me/photo", { path: path.join(s.home, "Documentos", "yo.png") });
+    assert.equal(r.status, 200);
+    assert.ok(r.json.photo.endsWith("/avatar.png") && fs.existsSync(r.json.photo));
+    assert.ok(fs.existsSync(path.join(s.home, ".face")));
+    assert.ok((await s.events()).some((e) => e.kind === "me" && e.data.photo));
+    assert.equal((await s.call("POST", "/me/photo", { path: "" })).json.photo, "");
+    // keyboard
+    const k = (await s.call("GET", "/keyboard")).json;
+    assert.ok(k.layouts.some((l: any) => l.id === "us"));
+    assert.equal((await s.call("POST", "/keyboard", { layout: "xx; rm" })).status, 400);
+    const before = s.wm.reconfigs;
+    assert.equal((await s.call("POST", "/keyboard", { layout: "us" })).json.layout, "us");
+    assert.equal(s.wm.reconfigs, before + 1);
+    assert.match(fs.readFileSync(path.join(s.dir, "cfg", "..", "labwc", "environment"), "utf8"), /^XKB_DEFAULT_LAYOUT=us$/m);
+  } finally { await s.stop(); }
+});
