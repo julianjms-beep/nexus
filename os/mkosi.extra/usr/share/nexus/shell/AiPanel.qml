@@ -3,7 +3,10 @@ import QtQuick.Window
 import QtQuick.Controls
 import org.kde.layershell 1.0 as LayerShell
 
-// NEXUS AI: one bar to open apps and talk to the computer (Super+Space).
+// NEXUS AI: one bar for everything (Super+Space): type and the apps, the Ajustes pages and the files that match appear
+// in sections (nexus-sessiond GET /search: the same index as NEXUS Search), with «Buscar en la web» and «Preguntar a
+// NEXUS AI» always at the end; ↑↓ move through all of them, ↵ runs the chosen one. A question with no match goes to
+// NEXUS AI, as before.
 Window {
     id: panel
     visible: false
@@ -16,7 +19,48 @@ Window {
 
     property bool busy: false
     property int sel: -1
-    property var matches: []
+    property var matches: []   // the apps that match (kept: the Enter default)
+    // the launcher's rows, in order: apps, Ajustes pages, files, then the web search and the question for NEXUS AI
+    property var rows: []
+    property var found: ({ apps: [], settings: [], files: [] })
+    property int askedSeq: 0
+    function lookup() {
+        var q = input.text.trim(), seq = ++askedSeq
+        if (q.length < 2 || q.length > 120) { found = { apps: [], settings: [], files: [] }; buildRows(); return }
+        Session.request("GET", "/search?q=" + encodeURIComponent(q), null, function(st, j) {
+            if (seq !== panel.askedSeq) return   // an older answer
+            panel.found = st === 200 && j ? { apps: j.apps || [], settings: j.settings || [], files: j.files || [] } : { apps: [], settings: [], files: [] }
+            panel.buildRows()
+        })
+    }
+    function buildRows() {
+        var q = input.text.trim(), out = []
+        for (var i = 0; i < matches.length; i++) out.push({ kind: "app", id: matches[i], label: (Session.apps[matches[i]] || {}).name || matches[i], sub: "App", icon: "" })
+        for (i = 0; i < found.apps.length; i++) if (matches.indexOf(found.apps[i].id) < 0 && out.length < 6) out.push({ kind: "app", id: found.apps[i].id, label: found.apps[i].name, sub: "App", icon: "" })
+        for (i = 0; i < Math.min(3, found.settings.length); i++) out.push({ kind: "settings", id: found.settings[i].page, label: found.settings[i].title, sub: "Ajustes", icon: "gear" })
+        for (i = 0; i < Math.min(5, found.files.length); i++) out.push({ kind: "file", id: found.files[i].path, label: found.files[i].name, sub: panel.whereIs(found.files[i].path), icon: found.files[i].dir ? "folder" : /\.(png|jpe?g|gif|webp|heic|svg)$/i.test(found.files[i].name) ? "image" : /\.(mp3|m4a|flac|wav|ogg)$/i.test(found.files[i].name) ? "music" : "doc" })
+        if (q.length >= 2) {
+            out.push({ kind: "web", id: q, label: "Buscar «" + q + "» en la web", sub: "NEXUS Search", icon: "globe" })
+            out.push({ kind: "ai", id: q, label: "Preguntar a NEXUS AI", sub: "«" + q + "»", icon: "brain" })
+        }
+        rows = out
+        if (sel >= rows.length) sel = rows.length - 1
+        if (sel < 0 && rows.length && rows[0].kind === "app") sel = 0
+    }
+    function whereIs(p) {
+        var parts = String(p).split("/"); parts.pop()
+        var home = parts.indexOf(Session.me.user)
+        var rel = home >= 0 ? parts.slice(home + 1) : parts
+        return rel.length ? rel.join(" › ") : "Carpeta personal"
+    }
+    function run(r) {
+        if (!r) return
+        if (r.kind === "app") { Session.launch(r.id); close() }
+        else if (r.kind === "settings") { Session.openSettings(r.id); close() }
+        else if (r.kind === "file") { Session.openFolder(r.id.slice(0, r.id.lastIndexOf("/")) || r.id); close() }   // Archivos, in its folder
+        else if (r.kind === "web") { Session.request("POST", "/search/open", { q: r.id }, null); close() }
+        else if (r.kind === "ai") ask(r.id)
+    }
     readonly property var suggestions: ["Organiza mis fotos por año", "Abre la terminal", "¿Cuánta memoria tengo?", "Pon el modo claro", "¿Qué hora es?"]
 
     // "shown" is what the person asked for; the window stays visible a moment longer so the bar can fade out
@@ -49,11 +93,14 @@ Window {
         }
         matches = out
         sel = out.length > 0 ? 0 : -1
+        lookupLater.restart()
+        buildRows()
     }
+    Timer { id: lookupLater; interval: 140; onTriggered: panel.lookup() }
     function submit() {
         var t = input.text.trim()
         if (!t || busy) return
-        if (sel >= 0 && sel < matches.length) { Session.launch(matches[sel]); close(); return }
+        if (sel >= 0 && sel < rows.length) { run(rows[sel]); return }
         ask(t)
     }
     function describe(actions) {
@@ -222,7 +269,7 @@ Window {
                         anchors.left: orb.right; anchors.leftMargin: 14
                         anchors.right: escHint.left; anchors.rightMargin: 12
                         anchors.verticalCenter: parent.verticalCenter
-                        placeholderText: panel.busy ? "Pensando…" : "Pregunta a NEXUS o abre una app…"
+                        placeholderText: panel.busy ? "Pensando…" : "Apps, archivos, ajustes, web… o pregunta a NEXUS"
                         placeholderTextColor: Theme.faint
                         color: Theme.text
                         selectionColor: Theme.alpha(Theme.accent, 0.4)
@@ -232,8 +279,8 @@ Window {
                         Keys.onReturnPressed: panel.submit()
                         Keys.onEnterPressed: panel.submit()
                         Keys.onEscapePressed: panel.close()
-                        Keys.onDownPressed: if (panel.matches.length) panel.sel = Math.min(panel.sel + 1, panel.matches.length - 1)
-                        Keys.onUpPressed: if (panel.matches.length) panel.sel = Math.max(panel.sel - 1, -1)
+                        Keys.onDownPressed: if (panel.rows.length) panel.sel = Math.min(panel.sel + 1, panel.rows.length - 1)
+                        Keys.onUpPressed: if (panel.rows.length) panel.sel = Math.max(panel.sel - 1, -1)
                     }
                     Rectangle {
                         id: escHint
@@ -246,30 +293,49 @@ Window {
 
                 Rectangle { width: parent.width; height: 1; color: Theme.border }
 
-                // matching apps
+                // the launcher: apps, Ajustes, files, the web, NEXUS AI
                 Column {
                     id: matchList
-                    visible: panel.matches.length > 0
+                    visible: panel.rows.length > 0
                     width: parent.width
                     topPadding: 8; bottomPadding: 8
+                    readonly property var sectionNames: ({ app: "Apps", settings: "Ajustes", file: "Archivos", web: "Web", ai: "NEXUS AI" })
                     Repeater {
-                        model: panel.matches
-                        Rectangle {
-                            required property string modelData
+                        model: panel.rows
+                        Column {
+                            required property var modelData
                             required property int index
-                            x: 8; width: matchList.width - 16; height: 48; radius: 12
-                            color: index === panel.sel ? Theme.alpha(Theme.accent, 0.18) : ma.containsMouse ? Theme.hover : "transparent"
-                            AppIcon { app: modelData; x: 12; width: 32; height: 32; anchors.verticalCenter: parent.verticalCenter }
-                            Text { x: 56; anchors.verticalCenter: parent.verticalCenter; text: (Session.apps[modelData] || {}).name || modelData; color: Theme.text; font.family: Theme.font; font.pixelSize: 15 }
-                            Text { anchors.right: parent.right; anchors.rightMargin: 14; anchors.verticalCenter: parent.verticalCenter; text: index === panel.sel ? "↵  Abrir" : "App"; color: Theme.faint; font.family: Theme.font; font.pixelSize: 12 }
-                            MouseArea { id: ma; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: { Session.launch(modelData); panel.close() } }
+                            readonly property bool newSection: index === 0 || panel.rows[index - 1].kind !== modelData.kind
+                            width: matchList.width
+                            Text {
+                                visible: parent.newSection
+                                x: 22; height: 24; verticalAlignment: Text.AlignBottom
+                                text: matchList.sectionNames[parent.modelData.kind] || ""
+                                color: Theme.faint; font.family: Theme.font; font.pixelSize: 11; font.weight: Font.DemiBold; font.letterSpacing: 0.6
+                            }
+                            Rectangle {
+                                readonly property var r: parent.modelData
+                                readonly property int i: parent.index
+                                x: 8; width: matchList.width - 16; height: 48; radius: 12
+                                color: i === panel.sel ? Theme.alpha(Theme.accent, 0.18) : ma.containsMouse ? Theme.hover : "transparent"
+                                AppIcon { visible: parent.r.kind === "app"; app: parent.r.kind === "app" ? parent.r.id : ""; x: 12; width: 32; height: 32; anchors.verticalCenter: parent.verticalCenter }
+                                Rectangle {
+                                    visible: parent.r.kind !== "app"
+                                    x: 12; width: 32; height: 32; radius: 9; anchors.verticalCenter: parent.verticalCenter
+                                    color: Theme.alpha(parent.r.kind === "ai" ? Theme.accent : Theme.dim, 0.16)
+                                    LineIcon { anchors.centerIn: parent; name: parent.parent.r.icon || "doc"; size: 17; color: parent.parent.r.kind === "ai" ? Theme.accent : Theme.text }
+                                }
+                                Text { x: 56; anchors.verticalCenter: parent.verticalCenter; width: parent.width - 56 - 120; elide: Text.ElideRight; text: parent.r.label; color: Theme.text; font.family: Theme.font; font.pixelSize: 15 }
+                                Text { anchors.right: parent.right; anchors.rightMargin: 14; anchors.verticalCenter: parent.verticalCenter; text: parent.i === panel.sel ? "↵  Abrir" : parent.r.sub; color: Theme.faint; font.family: Theme.font; font.pixelSize: 12; elide: Text.ElideLeft; width: Math.min(implicitWidth, 200) }
+                                MouseArea { id: ma; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: panel.run(parent.r) }
+                            }
                         }
                     }
                 }
 
                 // suggestions (empty state)
                 Flow {
-                    visible: chat.count === 0 && panel.matches.length === 0
+                    visible: chat.count === 0 && panel.rows.length === 0
                     width: parent.width - 40; x: 20
                     topPadding: 16; bottomPadding: 16
                     spacing: 8
@@ -289,7 +355,7 @@ Window {
                 // conversation
                 ListView {
                     id: chatView
-                    visible: chat.count > 0 && panel.matches.length === 0
+                    visible: chat.count > 0 && panel.rows.length === 0
                     width: parent.width
                     height: Math.min(contentHeight + topMargin + bottomMargin, 400)
                     clip: true

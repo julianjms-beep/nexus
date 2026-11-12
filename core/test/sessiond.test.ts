@@ -850,3 +850,19 @@ test("notification centre: every notice is kept with an id, counted until read, 
     assert.ok(fs.existsSync(path.join(s.home, ".local", "share", "nexus", "notices.json")));
   } finally { await s.stop(); }
 });
+
+test("the launcher: GET /search joins apps, Ajustes pages and files; «Buscar en la web» opens Navegador on that text", async () => {
+  const s = await setup();
+  try {
+    fs.writeFileSync(path.join(s.home, "Documentos", "Presupuesto waterpolo 2026.xlsx"), "x");
+    const r = (await s.call("GET", "/search?q=waterpolo")).json;
+    assert.deepEqual(r.files.map((f: any) => f.name), ["Presupuesto waterpolo 2026.xlsx"]);
+    const m = (await s.call("GET", "/search?q=mail")).json;
+    assert.ok(m.apps.some((a: any) => a.id === "mail"));
+    const a = (await s.call("GET", "/search?q=cortafuegos")).json;
+    assert.deepEqual(a.settings.map((x: any) => x.page), ["seguridad"]);
+    assert.equal((await s.call("POST", "/search/open", { q: "  " })).status, 400);
+    assert.equal((await s.call("POST", "/search/open", { q: "hoteles\u0000 en  Madrid" })).status, 200);
+    assert.deepEqual(s.spawned.at(-1), ["nexus-app", "Browser", "hoteles en Madrid"]);
+  } finally { await s.stop(); }
+});

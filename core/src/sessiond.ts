@@ -852,6 +852,14 @@ export function createSession(o: SessionOptions) {
       }
       if (m === "GET" && p === "/apps") return send(200, Object.fromEntries(installedApps().map(([id, a]) => [id, { name: a.name, icon: a.icon, running: isRunning(id) }])));
       if (m === "POST" && p === "/launch") { const b = await body(req); return send(200, await launch(String(b.app), "shell", b.path, b.page)); }
+      // the launcher's «Buscar en la web»: a Navegador window on NEXUS Search with that text (the Browser turns text
+      // that is not an address into a search, as its own bar does)
+      if (m === "POST" && p === "/search/open") {
+        const b = await body(req); const q = String(b.q ?? "").replace(/[\u0000-\u001f\u007f]/g, "").replace(/\s+/g, " ").trim().slice(0, 300);
+        if (!q) return send(400, { error: "empty search" });
+        spawnFn(["nexus-app", "Browser", q]); push("app", { app: "browser", running: true, by: "shell" });
+        return send(200, { ok: true });
+      }
       if (m === "POST" && p === "/power") { const b = await body(req); return send(200, power(String(b.action))); } // the shell's own menu: a human click
       // the menu bar (a human click on one of its menus): the active window, a shortcut pressed in it, a window action
       if (m === "GET" && p === "/focus") { await checkFocus().catch(() => {}); return send(200, describeFocus(focusLine)); }
